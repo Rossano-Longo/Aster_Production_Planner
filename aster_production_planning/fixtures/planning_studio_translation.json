@@ -1,0 +1,667 @@
+[
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_absences",
+  "language": "de",
+  "source_text": "Absences",
+  "translated_text": "Abwesenheiten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_active_assignment_window",
+  "language": "de",
+  "source_text": "Active Assignment Window",
+  "translated_text": "Aktives Zuweisungsfenster"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_all_activity_types",
+  "language": "de",
+  "source_text": "All activity types",
+  "translated_text": "Alle Aktivitätstypen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assign_week",
+  "language": "de",
+  "source_text": "Assign Week",
+  "translated_text": "Woche zuweisen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assign",
+  "language": "de",
+  "source_text": "Assign",
+  "translated_text": "Zuweisen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assigned_employees",
+  "language": "de",
+  "source_text": "Assigned Employees",
+  "translated_text": "Zugewiesene Mitarbeiter"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assigned_current_window",
+  "language": "de",
+  "source_text": "Assigned in the current window",
+  "translated_text": "Im aktuellen Fenster zugewiesen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assigned",
+  "language": "de",
+  "source_text": "Assigned",
+  "translated_text": "Zugewiesen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assignment_updated",
+  "language": "de",
+  "source_text": "Assignment updated",
+  "translated_text": "Zuweisung aktualisiert"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assignments_drawer_period",
+  "language": "de",
+  "source_text": "Assignments from this drawer are stored with this week as their From/To period.",
+  "translated_text": "Zuweisungen aus diesem Drawer werden mit dieser Woche als Von-/Bis-Zeitraum gespeichert."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_assignments_updated",
+  "language": "de",
+  "source_text": "Assignments updated",
+  "translated_text": "Zuweisungen aktualisiert"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_available_capacity",
+  "language": "de",
+  "source_text": "Available Capacity",
+  "translated_text": "Verfügbare Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_available_employees",
+  "language": "de",
+  "source_text": "Available Employees",
+  "translated_text": "Verfügbare Mitarbeiter"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_calc_hours_positive",
+  "language": "de",
+  "source_text": "Calculated Hours per Employee per Day must be greater than zero.",
+  "translated_text": "Berechnete Stunden pro Mitarbeiter und Tag müssen größer als null sein."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_calc_hours_label",
+  "language": "de",
+  "source_text": "Calculated Hours per Employee per Day",
+  "translated_text": "Berechnete Stunden pro Mitarbeiter und Tag"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_capacity_activities",
+  "language": "de",
+  "source_text": "Capacity Activities",
+  "translated_text": "Kapazitätsaktivitäten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_capacity",
+  "language": "de",
+  "source_text": "Capacity",
+  "translated_text": "Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_close",
+  "language": "de",
+  "source_text": "Close",
+  "translated_text": "Schließen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_create_or_drag_cards",
+  "language": "de",
+  "source_text": "Create or drag planning cards into this planning grid.",
+  "translated_text": "Erstelle Planungskarten oder ziehe sie in dieses Planungsraster."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_create_cards_visible_day",
+  "language": "de",
+  "source_text": "Create planning cards in any visible day and drag them across the entire continuous calendar.",
+  "translated_text": "Erstelle Planungskarten an jedem sichtbaren Tag und ziehe sie über den gesamten fortlaufenden Kalender."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_create",
+  "language": "de",
+  "source_text": "Create",
+  "translated_text": "Erstellen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_daily_per_employee",
+  "language": "de",
+  "source_text": "Daily per Employee",
+  "translated_text": "Täglich pro Mitarbeiter"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_timesheet_capacity_visible_horizon",
+  "language": "de",
+  "source_text": "Draft and submitted timesheet capacity for the visible horizon.",
+  "translated_text": "Entwurfs- und eingereichte Timesheet-Kapazität für den sichtbaren Horizont."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_timesheet_capacity_this_horizon",
+  "language": "de",
+  "source_text": "Draft and submitted timesheet capacity in this horizon",
+  "translated_text": "Entwurfs- und eingereichte Timesheet-Kapazität in diesem Horizont"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_timesheets_define_capacity",
+  "language": "de",
+  "source_text": "Draft and submitted timesheets define capacity. Already assigned project hours are shown as guidance and do not block further assignment.",
+  "translated_text": "Entwurfs- und eingereichte Timesheets bestimmen die Kapazität. Bereits zugewiesene Projektstunden werden als Orientierung angezeigt und blockieren keine weiteren Zuweisungen."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_edit_planning_card",
+  "language": "de",
+  "source_text": "Edit Planning Card",
+  "translated_text": "Planungskarte bearbeiten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_elementgruppe",
+  "language": "de",
+  "source_text": "Elementgruppe",
+  "translated_text": "Elementgruppe"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_employee_capacity",
+  "language": "de",
+  "source_text": "Employee Capacity",
+  "translated_text": "Mitarbeiterkapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_employee",
+  "language": "de",
+  "source_text": "Employee",
+  "translated_text": "Mitarbeiter"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_entire_planning_card_period",
+  "language": "de",
+  "source_text": "Entire planning card period",
+  "translated_text": "Gesamter Zeitraum der Planungskarte"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_focused_horizon",
+  "language": "de",
+  "source_text": "Focused horizon",
+  "translated_text": "Fokussierter Horizont"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_if_empty_operation_time",
+  "language": "de",
+  "source_text": "If empty, the operation time is used.",
+  "translated_text": "Wenn leer, wird die Zeit des Arbeitsgangs verwendet."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_leave",
+  "language": "de",
+  "source_text": "Leave",
+  "translated_text": "Urlaub"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_loading_employee_availability",
+  "language": "de",
+  "source_text": "Loading employee availability...",
+  "translated_text": "Mitarbeiterverfügbarkeit wird geladen..."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_month",
+  "language": "de",
+  "source_text": "Month",
+  "translated_text": "Monat"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_new_planning_card",
+  "language": "de",
+  "source_text": "New Planning Card",
+  "translated_text": "Neue Planungskarte"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_next",
+  "language": "de",
+  "source_text": "Next",
+  "translated_text": "Weiter"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_department",
+  "language": "de",
+  "source_text": "No Department",
+  "translated_text": "Keine Abteilung"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_assignment_window",
+  "language": "de",
+  "source_text": "No assignment in this window",
+  "translated_text": "Keine Zuweisung in diesem Fenster"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_draft_capacity",
+  "language": "de",
+  "source_text": "No draft capacity found in this horizon.",
+  "translated_text": "Keine Entwurfs-Kapazität in diesem Horizont gefunden."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_employee_capacity_period",
+  "language": "de",
+  "source_text": "No employee capacity found for this period.",
+  "translated_text": "Keine Mitarbeiterkapazität für diesen Zeitraum gefunden."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_submitted_absences",
+  "language": "de",
+  "source_text": "No submitted absences in this horizon.",
+  "translated_text": "Keine eingereichten Abwesenheiten in diesem Horizont."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_no_week_active",
+  "language": "de",
+  "source_text": "No week is active. Assignments will cover the full Planning Card period.",
+  "translated_text": "Keine Woche ist aktiv. Zuweisungen decken den gesamten Zeitraum der Planungskarte ab."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_not_assigned_current_window",
+  "language": "de",
+  "source_text": "Not assigned in the current window",
+  "translated_text": "Im aktuellen Fenster nicht zugewiesen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_not_set",
+  "language": "de",
+  "source_text": "Not set",
+  "translated_text": "Nicht gesetzt"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_note",
+  "language": "de",
+  "source_text": "Note",
+  "translated_text": "Notiz"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_on_this_card",
+  "language": "de",
+  "source_text": "On this card",
+  "translated_text": "Auf dieser Karte"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_open_form",
+  "language": "de",
+  "source_text": "Open Form",
+  "translated_text": "Formular öffnen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_operation",
+  "language": "de",
+  "source_text": "Operation",
+  "translated_text": "Arbeitsgang"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_other_project_hours",
+  "language": "de",
+  "source_text": "Other project hours",
+  "translated_text": "Andere Projektstunden"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_overload",
+  "language": "de",
+  "source_text": "Overload",
+  "translated_text": "Überlastung"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_period",
+  "language": "de",
+  "source_text": "Period",
+  "translated_text": "Zeitraum"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_plan_first_month_or_quarter",
+  "language": "de",
+  "source_text": "Plan first on month or quarter level and then move planning cards directly across days and weeks.",
+  "translated_text": "Plane zuerst auf Monats- oder Quartalsebene und verschiebe Planungskarten dann direkt über Tage und Wochen."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planned_hours",
+  "language": "de",
+  "source_text": "Planned Hours",
+  "translated_text": "Geplante Stunden"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planned_exceed_capacity",
+  "language": "de",
+  "source_text": "Planned hours exceed visible capacity",
+  "translated_text": "Geplante Stunden überschreiten die sichtbare Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planned_via_assignments",
+  "language": "de",
+  "source_text": "Planned via Assignments",
+  "translated_text": "Über Zuweisungen geplant"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_card_created",
+  "language": "de",
+  "source_text": "Planning Card created",
+  "translated_text": "Planungskarte erstellt"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_card_updated",
+  "language": "de",
+  "source_text": "Planning Card updated",
+  "translated_text": "Planungskarte aktualisiert"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_card",
+  "language": "de",
+  "source_text": "Planning Card",
+  "translated_text": "Planungskarte"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_cards",
+  "language": "de",
+  "source_text": "Planning Cards",
+  "translated_text": "Planungskarten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_horizon",
+  "language": "de",
+  "source_text": "Planning Horizon",
+  "translated_text": "Planungshorizont"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_settings",
+  "language": "de",
+  "source_text": "Planning Settings",
+  "translated_text": "Planungseinstellungen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_studio",
+  "language": "de",
+  "source_text": "Planning Studio",
+  "translated_text": "Planungsstudio"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_planning_cards_visible_horizon",
+  "language": "de",
+  "source_text": "Planning cards in the visible horizon",
+  "translated_text": "Planungskarten im sichtbaren Horizont"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_prev",
+  "language": "de",
+  "source_text": "Prev",
+  "translated_text": "Zurück"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_project",
+  "language": "de",
+  "source_text": "Project",
+  "translated_text": "Projekt"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_quarter",
+  "language": "de",
+  "source_text": "Quarter",
+  "translated_text": "Quartal"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_refresh",
+  "language": "de",
+  "source_text": "Refresh",
+  "translated_text": "Aktualisieren"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_remaining_capacity",
+  "language": "de",
+  "source_text": "Remaining Capacity",
+  "translated_text": "Verbleibende Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_remaining",
+  "language": "de",
+  "source_text": "Remaining",
+  "translated_text": "Verbleibend"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_remove",
+  "language": "de",
+  "source_text": "Remove",
+  "translated_text": "Entfernen"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_required_hours_positive",
+  "language": "de",
+  "source_text": "Required Hours must be greater than zero.",
+  "translated_text": "Erforderliche Stunden müssen größer als null sein."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_required_hours",
+  "language": "de",
+  "source_text": "Required Hours",
+  "translated_text": "Erforderliche Stunden"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_save",
+  "language": "de",
+  "source_text": "Save",
+  "translated_text": "Speichern"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_scroll_horizontal",
+  "language": "de",
+  "source_text": "Scroll horizontally to continue through the horizon.",
+  "translated_text": "Scrolle horizontal, um im Horizont weiterzugehen."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_parallel_work_confirm",
+  "language": "de",
+  "source_text": "Several employees are assigned. Should the end date be shortened for parallel work?",
+  "translated_text": "Mehrere Mitarbeiter sind zugewiesen. Soll das Enddatum für parallele Arbeit verkürzt werden?"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_start_date",
+  "language": "de",
+  "source_text": "Start Date",
+  "translated_text": "Startdatum"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_still_available",
+  "language": "de",
+  "source_text": "Still available in the visible horizon",
+  "translated_text": "Im sichtbaren Horizont noch verfügbar"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_submitted_approved_leave",
+  "language": "de",
+  "source_text": "Submitted and approved leave applications in the visible horizon.",
+  "translated_text": "Eingereichte und genehmigte Urlaubsanträge im sichtbaren Horizont."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_active_week_no_overlap",
+  "language": "de",
+  "source_text": "The active week does not overlap with this Planning Card.",
+  "translated_text": "Die aktive Woche überschneidet sich nicht mit dieser Planungskarte."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_upper_weekly_picture",
+  "language": "de",
+  "source_text": "The upper area gives you the rough-cut weekly picture. The lower planning horizon is the actual workspace for creating and moving planning cards.",
+  "translated_text": "Der obere Bereich zeigt dir die grobe Wochenübersicht. Der untere Planungshorizont ist der eigentliche Arbeitsbereich zum Erstellen und Verschieben von Planungskarten."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_today",
+  "language": "de",
+  "source_text": "Today",
+  "translated_text": "Heute"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_update_planning_card",
+  "language": "de",
+  "source_text": "Update Planning Card",
+  "translated_text": "Planungskarte aktualisieren"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_use_weekly_summary",
+  "language": "de",
+  "source_text": "Use this weekly summary to understand load and available capacity in the visible horizon.",
+  "translated_text": "Nutze diese Wochenübersicht, um Auslastung und verfügbare Kapazität im sichtbaren Horizont zu verstehen."
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_week_placeholder",
+  "language": "de",
+  "source_text": "Week {0}",
+  "translated_text": "Woche {0}"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_weekly_rough_cut_view",
+  "language": "de",
+  "source_text": "Weekly Rough-Cut View",
+  "translated_text": "Wöchentliche Grobplanung"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_of_visible_capacity",
+  "language": "de",
+  "source_text": "of visible capacity",
+  "translated_text": "der sichtbaren Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_utilization_in_horizon",
+  "language": "de",
+  "source_text": "utilization in horizon",
+  "translated_text": "Auslastung im Horizont"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_capacity_placeholder",
+  "language": "de",
+  "source_text": "{0} capacity",
+  "translated_text": "{0} Kapazität"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_cards_placeholder",
+  "language": "de",
+  "source_text": "{0} cards",
+  "translated_text": "{0} Karten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_days_placeholder",
+  "language": "de",
+  "source_text": "{0} days",
+  "translated_text": "{0} Tage"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_free_placeholder",
+  "language": "de",
+  "source_text": "{0} free",
+  "translated_text": "{0} frei"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_hours_placeholder",
+  "language": "de",
+  "source_text": "{0} h",
+  "translated_text": "{0} h"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_other_planning_cards_placeholder",
+  "language": "de",
+  "source_text": "{0} other planning cards",
+  "translated_text": "{0} andere Planungskarten"
+ },
+ {
+  "doctype": "Translation",
+  "name": "ps_tr_de_rows_placeholder",
+  "language": "de",
+  "source_text": "{0} rows",
+  "translated_text": "{0} Zeilen"
+ }
+]

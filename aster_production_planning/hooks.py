@@ -250,3 +250,10 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+fixtures = [
+	{
+		"doctype": "Translation",
+		"prefix": "planning_studio",
+		"filters": [["language", "=", "de"], ["name", "like", "ps_tr_de_%"]],
+	}
+]

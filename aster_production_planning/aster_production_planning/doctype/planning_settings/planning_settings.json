@@ -1,0 +1,136 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "creation": "2026-04-22 00:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "planning_card_duration_section",
+  "exclude_weekends_from_planning_duration",
+  "capacity_employees_section",
+  "capacity_employees",
+  "capacity_departments_section",
+  "capacity_departments",
+  "capacity_activity_types_section",
+  "capacity_activity_types"
+ ],
+ "fields": [
+  {
+   "fieldname": "planning_card_duration_section",
+   "fieldtype": "Section Break",
+   "label": "Planning Card Duration"
+  },
+  {
+   "default": "0",
+   "description": "If enabled, Saturdays and Sundays are skipped when Planning Card end dates and allocated hours are calculated.",
+   "fieldname": "exclude_weekends_from_planning_duration",
+   "fieldtype": "Check",
+   "label": "Exclude Weekends from Planning Card Duration"
+  },
+  {
+   "fieldname": "capacity_employees_section",
+   "fieldtype": "Section Break",
+   "label": "Capacity Employees"
+  },
+  {
+   "fieldname": "capacity_employees",
+   "fieldtype": "Table",
+   "label": "Capacity Employees",
+   "options": "Planning Settings Employee"
+  },
+  {
+   "fieldname": "capacity_departments_section",
+   "fieldtype": "Section Break",
+   "label": "Capacity Departments"
+  },
+  {
+   "fieldname": "capacity_departments",
+   "fieldtype": "Table",
+   "label": "Capacity Departments",
+   "options": "Planning Settings Department"
+  },
+  {
+   "fieldname": "capacity_activity_types_section",
+   "fieldtype": "Section Break",
+   "label": "Capacity Activity Types"
+  },
+  {
+   "fieldname": "capacity_activity_types",
+   "fieldtype": "Table",
+   "label": "Capacity Activity Types",
+   "options": "Planning Settings Activity Type"
+  }
+ ],
+ "icon": "fa fa-sliders",
+ "issingle": 1,
+ "modified": "2026-04-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Aster Production Planning",
+ "name": "Planning Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Projects Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Projects User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,31 @@
+{
+ "actions": [],
+ "creation": "2026-04-22 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "department"
+ ],
+ "fields": [
+  {
+   "columns": 12,
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Department",
+   "options": "Department",
+   "reqd": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-04-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Aster Production Planning",
+ "name": "Planning Settings Department",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

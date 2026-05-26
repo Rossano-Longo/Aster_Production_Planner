@@ -1,0 +1,226 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "format:PC-{YYYY}-{#####}",
+ "creation": "2026-04-16 00:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "planning_details_section",
+  "project",
+  "elementgruppe",
+  "operation",
+  "column_break_1",
+  "start_date",
+  "end_date",
+  "required_hours",
+  "hours_per_employee_per_day",
+  "allocated_hours",
+  "adjust_end_date_for_parallel_work",
+  "duration_in_hours",
+  "planning_team_section",
+  "assigned_employees",
+  "note_section",
+  "note",
+  "column_break_2",
+  "color"
+ ],
+ "fields": [
+  {
+   "fieldname": "planning_details_section",
+   "fieldtype": "Section Break",
+   "label": "Planning Details"
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Project",
+   "options": "Project",
+   "reqd": 1
+  },
+  {
+   "fieldname": "elementgruppe",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Elementgruppe",
+   "options": "Elementgruppe"
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Operation",
+   "options": "Operation",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Start Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "end_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "End Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "required_hours",
+   "fieldtype": "Float",
+   "label": "Required Hours",
+   "non_negative": 1,
+   "precision": "2",
+   "reqd": 1
+  },
+  {
+   "default": "8",
+   "fieldname": "hours_per_employee_per_day",
+   "fieldtype": "Float",
+   "label": "Calculated Hours per Employee per Day",
+   "non_negative": 1,
+   "precision": "2",
+   "reqd": 1
+  },
+  {
+   "fieldname": "allocated_hours",
+   "fieldtype": "Float",
+   "label": "Allocated Hours",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "adjust_end_date_for_parallel_work",
+   "fieldtype": "Check",
+   "label": "Adjust End Date for Parallel Work"
+  },
+  {
+   "fieldname": "duration_in_hours",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Legacy Duration in Hours",
+   "non_negative": 1,
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planning_team_section",
+   "fieldtype": "Section Break",
+   "label": "Assigned Employees"
+  },
+  {
+   "fieldname": "assigned_employees",
+   "fieldtype": "Table",
+   "label": "Assigned Employees",
+   "options": "Planning Card Assignment"
+  },
+  {
+   "fieldname": "note_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Information"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Text",
+   "label": "Note"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "operation.custom_color",
+   "fieldname": "color",
+   "fieldtype": "Color",
+   "label": "Color",
+   "read_only": 1
+  }
+ ],
+ "icon": "fa fa-calendar",
+ "modified": "2026-04-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Aster Production Planning",
+ "name": "Planning Card",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Projects Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Projects User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "search_fields": "project,elementgruppe,operation",
+ "show_name_in_global_search": 1,
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "project",
+ "track_changes": 1
+}
