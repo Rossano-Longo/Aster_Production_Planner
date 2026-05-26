@@ -4,6 +4,13 @@ Plan High Level Production of Operations and Projects
 
 ### Installation
 
+### Requirements
+
+- Frappe / ERPNext v16
+- `erpnext` installed
+- `hrms` installed
+- Python 3.11 to 3.14
+
 You can install this app using the [bench](https://github.com/frappe/bench) CLI:
 
 ```bash

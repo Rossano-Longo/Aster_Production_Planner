@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext", "hrms"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -251,6 +251,11 @@ app_license = "mit"
 # ignore_translatable_strings_from = []
 
 fixtures = [
+	{
+		"doctype": "Custom Field",
+		"prefix": "aster_production_planning",
+		"filters": [["module", "=", "Aster Production Planning"]],
+	},
 	{
 		"doctype": "Translation",
 		"prefix": "planning_studio",
