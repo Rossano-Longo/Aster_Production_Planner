@@ -10,6 +10,8 @@ from aster_production_planning.aster_production_planning.doctype.planning_settin
 	exclude_weekends_from_planning_duration,
 )
 
+OPERATION_DOCTYPE = "Operation"
+
 
 def is_weekend(day) -> bool:
 	return getdate(day).weekday() >= 5
@@ -48,6 +50,7 @@ def get_last_planned_day(start_date, planned_days: int, exclude_weekends: bool =
 
 class PlanningCard(Document):
 	def validate(self):
+		self.set_task_type_from_operation()
 		self.set_required_hours()
 		self.validate_planning_inputs()
 		self.set_end_date()
@@ -82,8 +85,18 @@ class PlanningCard(Document):
 		if not self.operation:
 			return 0.0
 
-		total_operation_time = frappe.db.get_value("Operation", self.operation, "total_operation_time") or 0
+		total_operation_time = frappe.db.get_value(OPERATION_DOCTYPE, self.operation, "total_operation_time") or 0
 		return flt(total_operation_time) / 60
+
+	def set_task_type_from_operation(self):
+		if not self.operation:
+			return
+
+		if self.task_type:
+			return
+
+		task_type = frappe.db.get_value(OPERATION_DOCTYPE, self.operation, "custom_task_type")
+		self.task_type = task_type or None
 
 	def get_effective_employee_count(self) -> int:
 		assigned_count = len([row for row in self.assigned_employees if row.employee])

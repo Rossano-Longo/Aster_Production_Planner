@@ -21,6 +21,24 @@ TIMESHEET_DOCTYPE = "Timesheet"
 LEAVE_APPLICATION_DOCTYPE = "Leave Application"
 OPERATION_DOCTYPE = "Operation"
 PROJECT_DOCTYPE = "Project"
+TASK_TYPE_DOCTYPE = "Task Type"
+DEFAULT_ABSENCE_HOURS_PER_DAY = 8.0
+PLANNING_CARD_FIELDS = [
+	"name",
+	"project",
+	"elementgruppe",
+	"operation",
+	"task_type",
+	"start_date",
+	"end_date",
+	"required_hours",
+	"duration_in_hours",
+	"hours_per_employee_per_day",
+	"allocated_hours",
+	"adjust_end_date_for_parallel_work",
+	"color",
+	"note",
+]
 
 
 def _require_permission(doctype: str, ptype: str = "read") -> None:
@@ -185,6 +203,14 @@ def _get_operation_required_hours(operation: str) -> float:
 	return flt(total_operation_time) / 60
 
 
+def _get_operation_task_type(operation: str | None) -> str | None:
+	if not operation:
+		return None
+
+	task_type = frappe.db.get_value(OPERATION_DOCTYPE, operation, "custom_task_type")
+	return task_type or None
+
+
 def _get_planning_cards(window_start, window_end) -> list[dict]:
 	planning_cards = frappe.get_list(
 		PLANNING_CARD_DOCTYPE,
@@ -193,6 +219,7 @@ def _get_planning_cards(window_start, window_end) -> list[dict]:
 			"project",
 			"elementgruppe",
 			"operation",
+			"task_type",
 			"start_date",
 			"end_date",
 			"required_hours",
@@ -414,10 +441,46 @@ def _get_absences(window_start, window_end, capacity_filters: dict | None = None
 				"to_date": str(row.to_date),
 				"overlap_days": overlap_days,
 				"half_day": cint(row.half_day),
+				"half_day_date": str(row.half_day_date) if row.half_day_date else None,
 			}
 		)
 
 	return absences
+
+
+def _get_daily_absence_summary(
+	window_start, window_end, absences: list[dict], hours_per_day: float = DEFAULT_ABSENCE_HOURS_PER_DAY
+) -> list[dict]:
+	daily_absences = defaultdict(lambda: {"absence_count": 0, "absence_hours": 0.0})
+	last_inclusive = (window_end - timedelta(seconds=1)).date()
+
+	for absence in absences:
+		absence_start = max(getdate(absence.get("from_date")), window_start.date())
+		absence_end = min(getdate(absence.get("to_date")), last_inclusive)
+		if absence_start > absence_end:
+			continue
+
+		half_day_date = (
+			getdate(absence.get("half_day_date"))
+			if cint(absence.get("half_day")) and absence.get("half_day_date")
+			else None
+		)
+		current_day = absence_start
+		while current_day <= absence_end:
+			daily_absences[str(current_day)]["absence_count"] += 1
+			daily_absences[str(current_day)]["absence_hours"] += (
+				hours_per_day / 2 if half_day_date and current_day == half_day_date else hours_per_day
+			)
+			current_day += timedelta(days=1)
+
+	return [
+		{
+			"date": date_key,
+			"absence_count": data["absence_count"],
+			"absence_hours": round(float(data["absence_hours"]), 2),
+		}
+		for date_key, data in sorted(daily_absences.items())
+	]
 
 
 def _get_daily_capacity(window_start, window_end, capacity_rows: list[dict]) -> list[dict]:
@@ -458,11 +521,12 @@ def _serialize_planning_card(planning_card) -> dict:
 	project_display = project_display or planning_card.project
 	return {
 		"name": planning_card.name,
-		"title": f"{project_display} · {planning_card.operation}",
+		"title": " · ".join(filter(None, [project_display, planning_card.operation, planning_card.task_type])),
 		"project": planning_card.project,
 		"project_display": project_display,
 		"elementgruppe": planning_card.elementgruppe,
 		"operation": planning_card.operation,
+		"task_type": planning_card.task_type,
 		"start_date": get_datetime_str(planning_card.start_date),
 		"end_date": get_datetime_str(end_datetime),
 		"required_hours": required_hours,
@@ -533,13 +597,42 @@ def _get_computed_end_datetime(planning_card, required_hours: float, assigned_em
 
 
 def _get_planning_card_with_assignments(name: str):
-	doc = frappe.get_doc(PLANNING_CARD_DOCTYPE, name)
+	doc_rows = frappe.get_all(
+		PLANNING_CARD_DOCTYPE,
+		filters={"name": name},
+		fields=PLANNING_CARD_FIELDS,
+		limit_page_length=1,
+	)
+	if not doc_rows:
+		frappe.throw(_("Planning Card {0} not found").format(name), frappe.DoesNotExistError)
+
+	doc = doc_rows[0]
+	assignments = frappe.get_all(
+		PLANNING_CARD_ASSIGNMENT_DOCTYPE,
+		fields=["employee", "employee_name", "from_date", "to_date", "allocated_hours"],
+		filters={"parenttype": PLANNING_CARD_DOCTYPE, "parent": name},
+		order_by="idx asc",
+	)
 	doc.assigned_employees = [
 		_normalize_assignment_row(doc, row.employee, row.employee_name, row.from_date, row.to_date, row.allocated_hours)
-		for row in doc.assigned_employees
+		for row in assignments
 	]
 	doc.project_display = frappe.db.get_value(PROJECT_DOCTYPE, doc.project, "project_name") or doc.project
 	return doc
+
+
+def _planning_card_is_accessible(name: str) -> bool:
+	if not name:
+		return False
+
+	return bool(
+		frappe.get_list(
+			PLANNING_CARD_DOCTYPE,
+			filters={"name": name},
+			pluck="name",
+			limit_page_length=1,
+		)
+	)
 
 
 def _get_employee_planning_load(window_start, window_end) -> list[dict]:
@@ -610,6 +703,62 @@ def _assignment_hours_in_window(row, window_start, window_end, card_hours_per_da
 	return flt(planned_days * flt(card_hours_per_day or 0), 2)
 
 
+def _get_task_type_breakdown(window_start, window_end, planning_cards) -> list[dict]:
+	task_type_totals = defaultdict(
+		lambda: {
+			"task_type": None,
+			"label": _("Without Task Type"),
+			"planned_hours": 0.0,
+			"assigned_hours": 0.0,
+			"color": None,
+		}
+	)
+
+	for planning_card in planning_cards:
+		task_type = (planning_card.task_type or "").strip() if planning_card.task_type else None
+		bucket_key = task_type or "__without_task_type__"
+		bucket = task_type_totals[bucket_key]
+		bucket["task_type"] = task_type
+		bucket["label"] = task_type or _("Without Task Type")
+
+		card_start = get_datetime(planning_card.start_date)
+		required_hours = flt(planning_card.required_hours or planning_card.duration_in_hours, 2)
+		card_end = _get_computed_end_datetime(planning_card, required_hours, planning_card.assigned_employees or [])
+		bucket["planned_hours"] += get_overlap_hours(window_start, window_end, card_start, card_end, required_hours)
+
+		for row in planning_card.assigned_employees or []:
+			bucket["assigned_hours"] += _assignment_hours_in_window(
+				frappe._dict(row), window_start, window_end, planning_card.hours_per_employee_per_day
+			)
+
+	task_type_names = [item["task_type"] for item in task_type_totals.values() if item["task_type"]]
+	task_type_colors = {}
+	if task_type_names:
+		task_type_colors = {
+			row.name: row.custom_color
+			for row in frappe.get_all(
+				TASK_TYPE_DOCTYPE,
+				fields=["name", "custom_color"],
+				filters={"name": ["in", task_type_names]},
+				limit_page_length=0,
+			)
+		}
+
+	return sorted(
+		[
+			{
+				**item,
+				"planned_hours": flt(item["planned_hours"], 2),
+				"assigned_hours": flt(item["assigned_hours"], 2),
+				"color": task_type_colors.get(item["task_type"]),
+			}
+			for item in task_type_totals.values()
+			if flt(item["planned_hours"]) > 0 or flt(item["assigned_hours"]) > 0
+		],
+		key=lambda item: (-(flt(item["planned_hours"]) + flt(item["assigned_hours"])), item["label"]),
+	)
+
+
 @frappe.whitelist()
 def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=None) -> dict:
 	_require_permission(PLANNING_CARD_DOCTYPE, "read")
@@ -627,8 +776,11 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 	}
 	planning_cards = _get_planning_cards(window_start, window_end)
 	capacity_rows = _get_timesheet_capacity(window_start, window_end, capacity_filters)
+	assignment_rows = _get_employee_planning_load(window_start, window_end)
 	absences = _get_absences(window_start, window_end, capacity_filters)
 	daily_capacity = _get_daily_capacity(window_start, window_end, capacity_rows)
+	daily_absences = _get_daily_absence_summary(window_start, window_end, absences)
+	task_type_breakdown = _get_task_type_breakdown(window_start, window_end, planning_cards)
 
 	total_planned_hours = 0.0
 	for planning_card in planning_cards:
@@ -643,6 +795,7 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 			"employee_name": _("Unassigned"),
 			"department": None,
 			"capacity_hours": 0.0,
+			"planned_hours": 0.0,
 			"timesheet_rows": 0,
 			"activity_types": set(),
 		}
@@ -665,6 +818,17 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 		if row.activity_type:
 			employee_data["activity_types"].add(row.activity_type)
 
+	for row in assignment_rows:
+		planned_hours = _assignment_hours_in_window(row, window_start, window_end, row.hours_per_employee_per_day)
+		if not planned_hours:
+			continue
+
+		employee_key = row.employee or row.employee_name or _("Unassigned")
+		employee_data = employee_capacity[employee_key]
+		employee_data["employee"] = row.employee
+		employee_data["employee_name"] = row.employee_name or row.employee or _("Unassigned")
+		employee_data["planned_hours"] += planned_hours
+
 	total_capacity_hours = sum(item["capacity_hours"] for item in employee_capacity.values())
 	total_available_hours = flt(total_capacity_hours - total_planned_hours, 2)
 	utilization = flt((total_planned_hours / total_capacity_hours) * 100, 1) if total_capacity_hours else 0.0
@@ -674,6 +838,8 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 			{
 				**data,
 				"capacity_hours": flt(data["capacity_hours"], 2),
+				"planned_hours": flt(data["planned_hours"], 2),
+				"open_capacity_hours": flt(data["capacity_hours"] - data["planned_hours"], 2),
 				"activity_types": sorted(data["activity_types"]),
 				"share_percent": flt((data["capacity_hours"] / total_capacity_hours) * 100, 1)
 				if total_capacity_hours
@@ -681,7 +847,7 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 			}
 			for data in employee_capacity.values()
 		],
-		key=lambda item: (-item["capacity_hours"], item["employee_name"]),
+		key=lambda item: (-item["capacity_hours"], -item["planned_hours"], item["employee_name"]),
 	)
 
 	return {
@@ -692,12 +858,15 @@ def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=N
 			"capacity_hours": flt(total_capacity_hours, 2),
 			"available_hours": total_available_hours,
 			"utilization_percent": utilization,
+			"task_type_breakdown": task_type_breakdown,
 		},
 		"capacity_by_employee": capacity_by_employee,
 		"daily_capacity": daily_capacity,
+		"daily_absences": daily_absences,
 		"absences": absences,
 		"selected_activity_types": selected_activity_types,
 		"applied_capacity_filters": capacity_filters,
+		"exclude_weekends_from_planning_duration": cint(exclude_weekends_from_planning_duration()),
 	}
 
 
@@ -706,9 +875,10 @@ def get_planning_card_detail(name: str, activity_types=None, range_start=None, r
 	_require_permission(PLANNING_CARD_DOCTYPE, "read")
 	_require_permission(TIMESHEET_DOCTYPE, "read")
 
-	doc = _get_planning_card_with_assignments(name)
-	if not doc.has_permission("read"):
+	if not _planning_card_is_accessible(name):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	doc = _get_planning_card_with_assignments(name)
 
 	selected_activity_types = _parse_activity_types(activity_types)
 	settings = _get_capacity_settings()
@@ -836,9 +1006,10 @@ def get_planning_card_detail(name: str, activity_types=None, range_start=None, r
 @frappe.whitelist()
 def create_planning_card(
 	project: str,
-	operation: str,
 	start_date: str,
+	operation: str | None = None,
 	elementgruppe: str | None = None,
+	task_type: str | None = None,
 	required_hours=None,
 	hours_per_employee_per_day=None,
 	assigned_employees=None,
@@ -852,7 +1023,8 @@ def create_planning_card(
 			"doctype": PLANNING_CARD_DOCTYPE,
 			"project": project,
 			"elementgruppe": elementgruppe,
-			"operation": operation,
+			"operation": operation or None,
+			"task_type": task_type or _get_operation_task_type(operation),
 			"start_date": get_datetime_str(get_datetime(start_date)),
 			"required_hours": flt(required_hours) or _get_operation_required_hours(operation),
 			"hours_per_employee_per_day": flt(hours_per_employee_per_day) or 8,
@@ -882,6 +1054,7 @@ def update_planning_card(
 	project: str | None = None,
 	elementgruppe: str | None = None,
 	operation: str | None = None,
+	task_type: str | None = None,
 	start_date: str | None = None,
 	required_hours=None,
 	hours_per_employee_per_day=None,
@@ -899,8 +1072,12 @@ def update_planning_card(
 		doc.project = project
 	if elementgruppe is not None or "elementgruppe" in frappe.form_dict:
 		doc.elementgruppe = elementgruppe or None
-	if operation:
-		doc.operation = operation
+	if operation is not None or "operation" in frappe.form_dict:
+		doc.operation = operation or None
+		if task_type is None and doc.operation:
+			task_type = _get_operation_task_type(doc.operation)
+	if task_type is not None or "task_type" in frappe.form_dict:
+		doc.task_type = task_type or None
 	if start_date:
 		doc.start_date = get_datetime_str(get_datetime(start_date))
 	if required_hours not in (None, ""):
@@ -937,6 +1114,23 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	doc.start_date = get_datetime_str(get_datetime(start_date))
+	if end_date:
+		start_dt = get_datetime(doc.start_date)
+		end_dt = get_datetime(end_date)
+		if end_dt < start_dt:
+			end_dt = start_dt
+
+		planned_days = count_planning_days(
+			start_dt.date(),
+			end_dt.date(),
+			doc.should_exclude_weekends(),
+		)
+		effective_daily_hours = flt(doc.hours_per_employee_per_day or 8, 2) * max(doc.get_effective_employee_count(), 1)
+		if effective_daily_hours <= 0:
+			frappe.throw(_("Calculated Hours per Employee per Day must be greater than zero"))
+
+		doc.required_hours = flt(max(planned_days, 1) * effective_daily_hours, 2)
+		doc.duration_in_hours = doc.required_hours
 	doc.save()
 
 	doc.assigned_employees = [

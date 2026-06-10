@@ -1,10 +1,14 @@
 frappe.ui.form.on("Planning Card", {
+	setup(frm) {
+		frm.set_query("task_type", () => get_production_planning_task_type_query());
+	},
+
 	refresh(frm) {
 		update_end_date(frm);
 	},
 
 	operation(frm) {
-		set_required_hours_from_operation(frm);
+		load_operation_defaults(frm);
 	},
 
 	start_date(frm) {
@@ -107,18 +111,20 @@ function sync_legacy_duration(frm) {
 	frm.set_value("duration_in_hours", flt(frm.doc.required_hours || 0));
 }
 
-function set_required_hours_from_operation(frm) {
+function load_operation_defaults(frm) {
 	if (!frm.doc.operation) {
 		return;
 	}
 
-	if (flt(frm.doc.required_hours) > 0) {
-		update_end_date(frm);
-		return;
-	}
-
-	frappe.db.get_value("Operation", frm.doc.operation, "total_operation_time", (response) => {
+	frappe.db.get_value("Operation", frm.doc.operation, ["total_operation_time", "custom_task_type"], (response) => {
 		const message = response?.message || response || {};
+		apply_production_planning_task_type(frm, message.custom_task_type || "");
+
+		if (flt(frm.doc.required_hours) > 0) {
+			update_end_date(frm);
+			return;
+		}
+
 		const totalOperationMinutes = flt(message.total_operation_time || 0);
 		if (totalOperationMinutes <= 0) {
 			return;
@@ -126,4 +132,29 @@ function set_required_hours_from_operation(frm) {
 
 		frm.set_value("required_hours", flt(totalOperationMinutes / 60, 2));
 	});
+}
+
+function get_production_planning_task_type_query() {
+	return {
+		filters: {
+			custom_use_for_production_planning: 1,
+		},
+	};
+}
+
+function apply_production_planning_task_type(frm, taskType) {
+	if (!taskType) {
+		frm.set_value("task_type", "");
+		return;
+	}
+
+	frappe.db
+		.get_value("Task Type", taskType, "custom_use_for_production_planning")
+		.then((response) => {
+			const message = response?.message || response || {};
+			frm.set_value("task_type", cint(message.custom_use_for_production_planning || message || 0) ? taskType : "");
+		})
+		.catch(() => {
+			frm.set_value("task_type", "");
+		});
 }

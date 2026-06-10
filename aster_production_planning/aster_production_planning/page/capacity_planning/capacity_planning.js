@@ -148,6 +148,7 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 					<div class="aster-metric-card" data-metric="available_hours"></div>
 					<div class="aster-metric-card" data-metric="planning_cards_count"></div>
 				</div>
+				<div class="aster-task-type-summary"></div>
 				<div class="aster-capacity-note">
 					<span class="aster-capacity-note__badge">${__("Capacity Source")}</span>
 					<span>${__("Draft and submitted timesheet rows in the visible calendar range")}</span>
@@ -198,6 +199,7 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 		this.$employee_list = this.$layout.find(".aster-employee-list");
 		this.$activity_list = this.$layout.find(".aster-activity-list");
 		this.$period = this.$layout.find(".aster-capacity-note__period");
+		this.$task_type_summary = this.$layout.find(".aster-task-type-summary");
 	}
 
 	bind_actions() {
@@ -207,7 +209,7 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 
 		this.page.clear_secondary_action();
 		this.page.clear_menu();
-		this.page.add_menu_item(__("Planning Settings"), () => frappe.set_route("planning-settings"));
+		this.page.add_menu_item(__("Planning Settings"), () => frappe.set_route("planning-setup"));
 
 		this.$layout.on("click", ".aster-open-list", () => {
 			frappe.set_route("List", "Planning Card");
@@ -352,6 +354,47 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 					<div class="aster-metric-card__helper">${metric.helper}</div>
 				`);
 		});
+
+		this.render_task_type_summary(summary.task_type_breakdown || []);
+	}
+
+	render_task_type_summary(rows) {
+		if (!rows.length) {
+			this.$task_type_summary.empty();
+			return;
+		}
+
+		this.$task_type_summary.html(`
+			<div class="aster-task-type-summary__card">
+				<div class="aster-task-type-summary__head">
+					<div>
+						<h4>${__("Task Type Hours")}</h4>
+						<p>${__("Planned and assigned hours in the visible range.")}</p>
+					</div>
+				</div>
+				<div class="aster-task-type-summary__table">
+					<div class="aster-task-type-summary__row is-head">
+						<div>${__("Task Type")}</div>
+						<div>${__("Planned Hours")}</div>
+						<div>${__("Assigned Hours")}</div>
+					</div>
+					${rows
+						.map(
+							(row) => `
+								<div class="aster-task-type-summary__row">
+									<div class="aster-task-type-summary__type">
+										<span class="aster-task-type-summary__swatch" style="background:${row.color || "rgba(47, 111, 97, 0.18)"}"></span>
+										<span>${frappe.utils.escape_html(row.label || __("Without Task Type"))}</span>
+									</div>
+									<div>${this.format_hours(row.planned_hours)} h</div>
+									<div>${this.format_hours(row.assigned_hours)} h</div>
+								</div>
+							`
+						)
+						.join("")}
+				</div>
+			</div>
+		`);
 	}
 
 	render_capacity_lists() {
@@ -454,7 +497,7 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 								<div class="aster-capacity-item__value">${flt(item.overlap_days)} ${__("days")}</div>
 							</div>
 							<div class="aster-capacity-item__meta">${frappe.utils.escape_html(item.leave_type || __("Leave"))}</div>
-							<div class="aster-capacity-item__meta">${frappe.utils.escape_html(item.from_date)} - ${frappe.utils.escape_html(item.to_date)}</div>
+							${this.get_absence_schedule_markup(item)}
 						</div>
 					`;
 				})
@@ -620,8 +663,9 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 
 	open_create_dialog(selection_info = null) {
 		const defaults = this.get_dialog_defaults(selection_info);
+		let dialog = null;
 
-		frappe.prompt(
+		dialog = frappe.prompt(
 			[
 				{
 					fieldname: "project",
@@ -632,16 +676,28 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 				},
 				{
 					fieldname: "elementgruppe",
-					fieldtype: "Link",
+					fieldtype: "Data",
 					label: __("Elementgruppe"),
-					options: "Elementgruppe",
 				},
 				{
 					fieldname: "operation",
 					fieldtype: "Link",
 					label: __("Operation"),
 					options: "Operation",
-					reqd: 1,
+					onchange: () => {
+						this.load_operation_defaults(dialog);
+					},
+				},
+				{
+					fieldname: "task_type",
+					fieldtype: "Link",
+					label: __("Task Type"),
+					options: "Task Type",
+					default: defaults.task_type,
+					get_query: () => this.get_production_planning_task_type_query(),
+					onchange: () => {
+						dialog.__task_type_touched = true;
+					},
 				},
 				{
 					fieldname: "start_date",
@@ -671,6 +727,7 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 						project: values.project,
 						elementgruppe: values.elementgruppe,
 						operation: values.operation,
+						task_type: values.task_type,
 						start_date: frappe.datetime.convert_to_system_tz(values.start_date),
 						required_hours: values.required_hours,
 						note: values.note,
@@ -686,6 +743,62 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 			__("New Planning Card"),
 			__("Create")
 		);
+		dialog.__task_type_touched = false;
+		if (defaults.operation && dialog?.get_value("operation")) {
+			this.load_operation_defaults(dialog);
+		}
+	}
+
+	load_operation_defaults(dialog) {
+		const operation = dialog?.get_value("operation");
+		if (!operation) {
+			return;
+		}
+
+		frappe.db.get_value("Operation", operation, ["total_operation_time", "custom_task_type"], (response) => {
+			const message = response?.message || response || {};
+			if (!dialog.__task_type_touched) {
+				this.apply_production_planning_task_type(dialog, message.custom_task_type || "");
+			}
+			if (flt(dialog.get_value("required_hours")) > 0) {
+				return;
+			}
+			const totalOperationMinutes = flt(message.total_operation_time || 0);
+			if (totalOperationMinutes <= 0) {
+				return;
+			}
+
+			dialog.set_value("required_hours", flt(totalOperationMinutes / 60, 2));
+		});
+	}
+
+	get_production_planning_task_type_query() {
+		return {
+			filters: {
+				custom_use_for_production_planning: 1,
+			},
+		};
+	}
+
+	apply_production_planning_task_type(target, task_type) {
+		if (!target?.set_value) {
+			return;
+		}
+
+		if (!task_type) {
+			target.set_value("task_type", "");
+			return;
+		}
+
+		frappe.db
+			.get_value("Task Type", task_type, "custom_use_for_production_planning")
+			.then((response) => {
+				const message = response?.message || response || {};
+				target.set_value("task_type", cint(message.custom_use_for_production_planning || message || 0) ? task_type : "");
+			})
+			.catch(() => {
+				target.set_value("task_type", "");
+			});
 	}
 
 	start_interaction(event, mode) {
@@ -974,6 +1087,57 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 		return this.to_user_moment(value).format("DD.MM.YYYY HH:mm");
 	}
 
+	format_absence_datetime_parts(value) {
+		if (!value) {
+			return { day: "–", time: "" };
+		}
+
+		const rawValue = String(value).trim();
+		if (!rawValue) {
+			return { day: "–", time: "" };
+		}
+
+		let parsed = null;
+		if (rawValue.length <= 10) {
+			parsed = moment(rawValue, "YYYY-MM-DD", true);
+		} else {
+			parsed = this.to_user_moment(rawValue);
+			if (!parsed.isValid()) {
+				parsed = moment(rawValue, frappe.defaultDatetimeFormat, true);
+			}
+		}
+
+		if (!parsed?.isValid()) {
+			return { day: rawValue, time: "" };
+		}
+
+		const formattedTime = parsed.format("HH:mm:ss");
+		return {
+			day: parsed.format("DD.MM.YYYY"),
+			time: formattedTime === "00:00:00" ? "" : parsed.format("HH:mm"),
+		};
+	}
+
+	get_absence_schedule_markup(item) {
+		const start = this.format_absence_datetime_parts(item.from_date);
+		const end = this.format_absence_datetime_parts(item.to_date);
+
+		return `
+			<div class="aster-capacity-item__absence-range">
+				<div class="aster-capacity-item__absence-point">
+					<span class="aster-capacity-item__absence-label">${__("From")}</span>
+					<span class="aster-capacity-item__absence-day">${frappe.utils.escape_html(start.day)}</span>
+					${start.time ? `<span class="aster-capacity-item__absence-time">${frappe.utils.escape_html(start.time)}</span>` : ""}
+				</div>
+				<div class="aster-capacity-item__absence-point">
+					<span class="aster-capacity-item__absence-label">${__("To")}</span>
+					<span class="aster-capacity-item__absence-day">${frappe.utils.escape_html(end.day)}</span>
+					${end.time ? `<span class="aster-capacity-item__absence-time">${frappe.utils.escape_html(end.time)}</span>` : ""}
+				</div>
+			</div>
+		`;
+	}
+
 	round_hours(value) {
 		return Math.round((flt(value) || 0) * 4) / 4;
 	}
@@ -1030,6 +1194,70 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 				gap: 14px;
 				grid-template-columns: repeat(4, minmax(0, 1fr));
 				margin-bottom: 14px;
+			}
+
+			.aster-task-type-summary {
+				margin-bottom: 14px;
+			}
+
+			.aster-task-type-summary__card {
+				background: var(--aster-panel);
+				border: 1px solid var(--aster-line);
+				border-radius: 20px;
+				box-shadow: var(--aster-shadow);
+				padding: 18px 20px;
+			}
+
+			.aster-task-type-summary__head h4 {
+				font-size: 16px;
+				font-weight: 700;
+				margin: 0;
+			}
+
+			.aster-task-type-summary__head p {
+				color: var(--aster-ink-soft);
+				font-size: 13px;
+				margin: 4px 0 0;
+			}
+
+			.aster-task-type-summary__table {
+				display: grid;
+				margin-top: 14px;
+			}
+
+			.aster-task-type-summary__row {
+				align-items: center;
+				border-top: 1px solid var(--aster-line);
+				display: grid;
+				gap: 12px;
+				grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 1fr);
+				padding: 10px 0;
+			}
+
+			.aster-task-type-summary__row.is-head {
+				border-top: 0;
+				color: var(--aster-ink-soft);
+				font-size: 12px;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				padding-top: 0;
+				text-transform: uppercase;
+			}
+
+			.aster-task-type-summary__type {
+				align-items: center;
+				display: flex;
+				gap: 10px;
+				font-weight: 600;
+				min-width: 0;
+			}
+
+			.aster-task-type-summary__swatch {
+				border-radius: 999px;
+				display: inline-block;
+				flex: 0 0 10px;
+				height: 10px;
+				width: 10px;
 			}
 
 			.aster-capacity-fatal {
@@ -1095,6 +1323,37 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 			.aster-panel__head p,
 			.aster-capacity-note {
 				color: var(--aster-ink-soft);
+			}
+
+			.aster-capacity-item__absence-range {
+				display: grid;
+				gap: 6px;
+				margin-top: 8px;
+			}
+
+			.aster-capacity-item__absence-point {
+				align-items: baseline;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+			}
+
+			.aster-capacity-item__absence-label {
+				color: var(--aster-ink-soft);
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: 0.03em;
+				text-transform: uppercase;
+			}
+
+			.aster-capacity-item__absence-day {
+				font-size: 12px;
+				font-weight: 700;
+			}
+
+			.aster-capacity-item__absence-time {
+				color: var(--aster-ink-soft);
+				font-size: 12px;
 			}
 
 			.aster-metric-card__label {
@@ -1552,6 +1811,10 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 					grid-template-columns: 1fr;
 				}
 
+				.aster-task-type-summary__row {
+					grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(100px, 1fr));
+				}
+
 				.aster-board-toolbar {
 					grid-template-columns: 1fr;
 				}
@@ -1565,6 +1828,11 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 			@media (max-width: 768px) {
 				.aster-capacity-metrics {
 					grid-template-columns: 1fr 1fr;
+				}
+
+				.aster-task-type-summary__row,
+				.aster-task-type-summary__row.is-head {
+					grid-template-columns: 1fr;
 				}
 
 				.aster-week-board__scroll {

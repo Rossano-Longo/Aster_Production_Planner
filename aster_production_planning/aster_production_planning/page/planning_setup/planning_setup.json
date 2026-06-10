@@ -8,9 +8,9 @@
  "modified": "2026-04-22 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Aster Production Planning",
- "name": "planning-settings",
+ "name": "planning-setup",
  "owner": "Administrator",
- "page_name": "planning-settings",
+ "page_name": "planning-setup",
  "roles": [
   {
    "role": "System Manager"

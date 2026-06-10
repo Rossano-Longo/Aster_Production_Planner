@@ -16,6 +16,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.request_id = 0;
 		this.detail_request_id = 0;
 		this.drag_card_name = null;
+		this.card_resize_interaction = null;
 		this.assignment_interaction = null;
 		this.active_card_name = null;
 		this.card_detail = null;
@@ -26,6 +27,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			summary: {},
 			capacity_by_employee: [],
 			daily_capacity: [],
+			daily_absences: [],
 			absences: [],
 		};
 
@@ -87,6 +89,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					<div class="aster-studio__metric" data-metric="capacity_hours"></div>
 					<div class="aster-studio__metric" data-metric="available_hours"></div>
 				</div>
+				<div class="aster-studio__task-type-summary"></div>
 
 				<div class="aster-studio__stack">
 					<section class="aster-studio__panel">
@@ -150,6 +153,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.$horizon = this.$layout.find(".aster-studio__horizon");
 		this.$employee_list = this.$layout.find(".aster-studio__employee-list");
 		this.$activity_list = this.$layout.find(".aster-studio__activity-list");
+		this.$task_type_summary = this.$layout.find(".aster-studio__task-type-summary");
 		this.$drawer = this.$layout.find(".aster-studio-drawer");
 		this.$drawer_content = this.$layout.find(".aster-studio-drawer__content");
 	}
@@ -161,7 +165,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 		this.page.clear_secondary_action();
 		this.page.clear_menu();
-		this.page.add_menu_item(__("Planning Settings"), () => frappe.set_route("planning-settings"));
+		this.page.add_menu_item(__("Planning Settings"), () => frappe.set_route("planning-setup"));
 
 		this.$layout.on("click", ".aster-studio-refresh", () => this.refresh());
 		this.$layout.on("click", ".aster-studio-open-list", () => frappe.set_route("List", "Planning Card"));
@@ -278,7 +282,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		});
 
 		this.$layout.on("dragstart", ".aster-studio-card", (event) => {
-			if ($(event.target).closest(".aster-studio-card__assignment-segment").length) {
+			if (
+				$(event.target).closest(".aster-studio-card__assignment-segment").length ||
+				$(event.target).closest(".aster-studio-card__resize-handle").length
+			) {
 				event.preventDefault();
 				return false;
 			}
@@ -352,12 +359,31 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			this.start_assignment_interaction(event, "resize-end");
 		});
 
+		this.$layout.on("click", ".aster-studio-card__resize-handle", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+		});
+
+		this.$layout.on("mousedown", ".aster-studio-card__resize-handle--start", (event) => {
+			this.start_card_resize_interaction(event, "resize-start");
+		});
+
+		this.$layout.on("mousedown", ".aster-studio-card__resize-handle--end", (event) => {
+			this.start_card_resize_interaction(event, "resize-end");
+		});
+
 		this.$layout.on("click", ".aster-studio-card__assignment-segment", (event) => {
 			event.stopPropagation();
 		});
 
-		$(document).on("mousemove.asterPlanningStudio", (event) => this.handle_assignment_interaction_move(event));
-		$(document).on("mouseup.asterPlanningStudio", () => this.finish_assignment_interaction());
+		$(document).on("mousemove.asterPlanningStudio", (event) => {
+			this.handle_card_resize_interaction_move(event);
+			this.handle_assignment_interaction_move(event);
+		});
+		$(document).on("mouseup.asterPlanningStudio", () => {
+			this.finish_card_resize_interaction();
+			this.finish_assignment_interaction();
+		});
 	}
 
 	refresh() {
@@ -426,35 +452,80 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		const summary = this.state.summary || {};
 		const metrics = [
 			{
+				key: "capacity_hours",
+				label: __("Adjusted Capacity"),
+				value: this.format_hours_with_unit(summary.capacity_hours),
+				meta: __("Draft and submitted timesheet capacity in this horizon"),
+			},
+			{
 				key: "planned_hours",
 				label: __("Planned Hours"),
 				value: this.format_hours_with_unit(summary.planned_hours),
 				meta: `${this.format_percent(summary.utilization_percent)} ${__("utilization in horizon")}`,
 			},
 			{
-				key: "capacity_hours",
-				label: __("Available Capacity"),
-				value: this.format_hours_with_unit(summary.capacity_hours),
-				meta: __("Draft and submitted timesheet capacity in this horizon"),
-			},
-			{
 				key: "available_hours",
-				label: summary.available_hours >= 0 ? __("Remaining Capacity") : __("Overload"),
-				value: this.format_hours_with_unit(Math.abs(summary.available_hours || 0)),
+				label: summary.available_hours >= 0 ? __("Open Capacity") : __("Overload"),
+				value: this.format_hours_with_unit(summary.available_hours || 0),
 				meta:
 					summary.available_hours >= 0
-						? __("Still available in the visible horizon")
-						: __("Planned hours exceed visible capacity"),
+						? __("Adjusted capacity minus planned hours")
+						: __("Adjusted capacity minus planned hours"),
+				state: summary.available_hours >= 0 ? "good" : "danger",
 			},
 		];
 
 		metrics.forEach((metric) => {
-			this.$layout.find(`[data-metric="${metric.key}"]`).html(`
+			this.$layout.find(`[data-metric="${metric.key}"]`)
+				.toggleClass("is-danger", metric.state === "danger")
+				.toggleClass("is-good", metric.state === "good")
+				.html(`
 				<div class="aster-studio__metric-label">${metric.label}</div>
 				<div class="aster-studio__metric-value">${metric.value}</div>
 				<div class="aster-studio__metric-meta">${metric.meta}</div>
 			`);
 		});
+
+		this.render_task_type_summary(summary.task_type_breakdown || []);
+	}
+
+	render_task_type_summary(rows) {
+		if (!rows.length) {
+			this.$task_type_summary.empty();
+			return;
+		}
+
+		this.$task_type_summary.html(`
+			<div class="aster-studio__task-type-card">
+				<div class="aster-studio__task-type-head">
+					<div>
+						<h3>${__("Task Type Hours")}</h3>
+						<p>${__("Planned and assigned hours in the visible horizon.")}</p>
+					</div>
+				</div>
+				<div class="aster-studio__task-type-table">
+					<div class="aster-studio__task-type-row is-head">
+						<div>${__("Task Type")}</div>
+						<div>${__("Planned Hours")}</div>
+						<div>${__("Assigned Hours")}</div>
+					</div>
+					${rows
+						.map(
+							(row) => `
+								<div class="aster-studio__task-type-row">
+									<div class="aster-studio__task-type-label">
+										<span class="aster-studio__task-type-swatch" style="background:${row.color || "rgba(157, 18, 255, 0.18)"}"></span>
+										<span>${frappe.utils.escape_html(row.label || __("Without Task Type"))}</span>
+									</div>
+									<div>${this.format_hours_with_unit(row.planned_hours)}</div>
+									<div>${this.format_hours_with_unit(row.assigned_hours)}</div>
+								</div>
+							`
+						)
+						.join("")}
+				</div>
+			</div>
+		`);
 	}
 
 	render_overview() {
@@ -497,10 +568,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 									<div class="aster-studio-week-pill__value">${this.format_hours_with_unit(week.planned_hours)}</div>
 								</div>
 								<div class="aster-studio-week-pill__meta">
-									<span>${__("{0} cards", [week.cards.length])}</span>
-									<span>${__("{0} capacity", [this.format_hours_with_unit(week.capacity_hours)])}</span>
-									<span>${__("{0} free", [this.format_hours_with_unit(week.available_hours)])}</span>
+									<span>${__("{0} adjusted capacity", [this.format_hours_with_unit(week.capacity_hours)])}</span>
+									<span class="${week.available_hours < 0 ? "is-negative" : ""}">${__("{0} open", [this.format_hours_with_unit(week.available_hours)])}</span>
 								</div>
+								${this.get_week_capacity_bar_markup(week)}
 								<div class="aster-studio-week-pill__tags">${tags}${more}</div>
 							</div>
 						`;
@@ -508,6 +579,24 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					.join("")}
 			</div>
 		`);
+	}
+
+	get_week_capacity_bar_markup(week) {
+		const capacity = flt(week.capacity_hours || 0);
+		const planned = flt(week.planned_hours || 0);
+		const open = flt(week.available_hours || 0);
+		const utilizationPercent = capacity > 0 ? Math.min((planned / capacity) * 100, 100) : 0;
+		const openPercent = capacity > 0 ? Math.max((Math.max(open, 0) / capacity) * 100, 0) : 0;
+		const overloaded = open < 0;
+
+		return `
+			<div class="aster-studio-week-pill__capacity">
+				<div class="aster-studio-week-pill__capacity-bar ${overloaded ? "is-overloaded" : ""}">
+					<span class="is-planned" style="width:${utilizationPercent}%"></span>
+					<span class="is-open" style="width:${openPercent}%"></span>
+				</div>
+			</div>
+		`;
 	}
 
 	render_horizon() {
@@ -543,16 +632,18 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	build_horizon_days(horizon_window = this.get_horizon_window()) {
 		const capacityByDay = this.get_daily_capacity_map();
-		const absencesByDay = this.get_absence_day_map();
+		const absencesByDay = this.get_daily_absence_map();
 		const days = [];
 		let cursor = horizon_window.start.clone();
 		while (cursor.isBefore(horizon_window.end, "day")) {
 			const dateKey = cursor.format("YYYY-MM-DD");
+			const absenceSummary = absencesByDay[dateKey] || {};
 			days.push({
 				date: cursor.clone(),
 				capacity_hours: flt(capacityByDay[dateKey] || 0),
-				absence_count: cint(absencesByDay[dateKey] || 0),
-				has_absence: cint(absencesByDay[dateKey] || 0) > 0,
+				absence_count: cint(absenceSummary.absence_count || 0),
+				absence_hours: flt(absenceSummary.absence_hours || 0),
+				has_absence: cint(absenceSummary.absence_count || 0) > 0,
 				is_weekend: cursor.isoWeekday() >= 6,
 				is_today: cursor.isSame(moment(), "day"),
 				is_active_week: this.is_day_in_active_week(cursor),
@@ -598,7 +689,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				cards: week_cards,
 				planned_hours,
 				capacity_hours,
-				available_hours: Math.max(capacity_hours - planned_hours, 0),
+				available_hours: flt(capacity_hours - planned_hours, 2),
 			};
 
 			if (include_days) {
@@ -684,6 +775,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				<div class="aster-studio-horizon__day-name">${day.date.format("ddd")}</div>
 				<div class="aster-studio-horizon__day-number">${day.date.format("DD.MM")}</div>
 				<div class="aster-studio-horizon__day-capacity">${flt(day.capacity_hours) > 0 ? this.format_hours_with_unit(day.capacity_hours) : "-"}</div>
+				${
+					flt(day.absence_hours) > 0
+						? `<div class="aster-studio-horizon__day-absence">${__("Absence")}: ${this.format_hours_with_unit(day.absence_hours)}</div>`
+						: ""
+				}
 			</div>
 		`;
 	}
@@ -721,6 +817,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				style="--card-color:${cardColor}; --card-text-color:${cardTextColor}; --card-column-start:${start_column}; --card-column-end:${end_column + 1}; --card-lane:${lane_index + 1}; --assignment-rows:${Math.max((card.assigned_employees || []).length, 1)};"
 				title="${frappe.utils.escape_html([projectLabel, card.elementgruppe, card.operation].filter(Boolean).join(" · "))}"
 			>
+				<span class="aster-studio-card__resize-handle aster-studio-card__resize-handle--start" title="${__("Adjust duration")}" aria-hidden="true"></span>
+				<span class="aster-studio-card__resize-handle aster-studio-card__resize-handle--end" title="${__("Adjust duration")}" aria-hidden="true"></span>
 				${weekHighlightMarkup}
 				<div class="aster-studio-card__header">
 					<div class="aster-studio-card__title">${frappe.utils.escape_html(projectLabel)}</div>
@@ -741,18 +839,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		);
 	}
 
-	get_absence_day_map() {
-		const absenceDayMap = {};
-		(this.state.absences || []).forEach((absence) => {
-			let cursor = moment(absence.from_date, "YYYY-MM-DD");
-			const end = moment(absence.to_date, "YYYY-MM-DD");
-			while (!cursor.isAfter(end, "day")) {
-				const dateKey = cursor.format("YYYY-MM-DD");
-				absenceDayMap[dateKey] = cint(absenceDayMap[dateKey] || 0) + 1;
-				cursor.add(1, "day");
-			}
-		});
-		return absenceDayMap;
+	get_daily_absence_map() {
+		return Object.fromEntries(
+			(this.state.daily_absences || []).map((row) => [
+				row.date,
+				{
+					absence_count: cint(row.absence_count || 0),
+					absence_hours: flt(row.absence_hours || 0),
+				},
+			])
+		);
 	}
 
 	get_card_markup(card) {
@@ -776,22 +872,30 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		this.$employee_list.html(
-			items
-				.map((item) => `
-					<div class="aster-studio__list-card">
-						<div class="aster-studio__list-row">
-							<div>
-								<div class="aster-studio__list-title">${frappe.utils.escape_html(item.employee_name)}</div>
-								<div class="aster-studio__list-meta">${frappe.utils.escape_html(item.department || __("No Department"))}</div>
-							</div>
-							<div class="aster-studio__list-value">${this.format_hours_with_unit(item.capacity_hours)}</div>
-						</div>
-						<div class="aster-studio__list-meta">${__("{0} rows", [cint(item.timesheet_rows)])} · ${this.format_percent(item.share_percent)} ${__("of visible capacity")}</div>
+		this.$employee_list.html(`
+			<div class="aster-studio__capacity-table-card">
+				<div class="aster-studio__capacity-table">
+					<div class="aster-studio__capacity-table-row is-head">
+						<div>${__("Employee")}</div>
+						<div>${__("Adjusted Capacity")}</div>
+						<div>${__("Planned Hours")}</div>
+						<div>${__("Open Capacity")}</div>
 					</div>
-				`)
-				.join("")
-		);
+					${items
+						.map(
+							(item) => `
+								<div class="aster-studio__capacity-table-row">
+									<div class="aster-studio__capacity-table-name">${frappe.utils.escape_html(item.employee_name || "")}</div>
+									<div class="aster-studio__capacity-table-value">${this.format_hours_with_unit(item.capacity_hours)}</div>
+									<div class="aster-studio__capacity-table-value">${this.format_hours_with_unit(item.planned_hours)}</div>
+									<div class="aster-studio__capacity-table-value ${flt(item.open_capacity_hours) < 0 ? "is-negative" : ""}">${this.format_hours_with_unit(item.open_capacity_hours)}</div>
+								</div>
+							`
+						)
+						.join("")}
+				</div>
+			</div>
+		`);
 	}
 
 	render_absence_list() {
@@ -801,25 +905,30 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		this.$activity_list.html(
-			items
-				.map((item) => {
-					return `
-						<div class="aster-studio__list-card">
-							<div class="aster-studio__list-row">
-								<div>
-									<div class="aster-studio__list-title">${frappe.utils.escape_html(item.employee_name)}</div>
-									<div class="aster-studio__list-meta">${frappe.utils.escape_html(item.department || __("No Department"))}</div>
+		this.$activity_list.html(`
+			<div class="aster-studio__absence-table-card">
+				<div class="aster-studio__absence-table">
+					<div class="aster-studio__absence-table-row is-head">
+						<div>${__("Employee")}</div>
+						<div>${__("Leave")}</div>
+						<div>${__("Period")}</div>
+						<div>${__("Duration")}</div>
+					</div>
+					${items
+						.map(
+							(item) => `
+								<div class="aster-studio__absence-table-row">
+									<div class="aster-studio__absence-table-name">${frappe.utils.escape_html(item.employee_name || "")}</div>
+									<div>${frappe.utils.escape_html(item.leave_type || __("Leave"))}</div>
+									<div>${this.get_absence_schedule_markup(item)}</div>
+									<div class="aster-studio__absence-table-duration">${this.format_absence_duration(item)}</div>
 								</div>
-								<div class="aster-studio__list-value">${__("{0} days", [flt(item.overlap_days)])}</div>
-							</div>
-							<div class="aster-studio__list-meta">${frappe.utils.escape_html(item.leave_type || __("Leave"))}</div>
-							<div class="aster-studio__list-meta">${frappe.utils.escape_html(item.from_date)} - ${frappe.utils.escape_html(item.to_date)}</div>
-						</div>
-					`;
-				})
-				.join("")
-		);
+							`
+						)
+						.join("")}
+				</div>
+			</div>
+		`);
 	}
 
 	open_card_detail(card) {
@@ -1140,9 +1249,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				},
 				{
 					fieldname: "elementgruppe",
-					fieldtype: "Link",
+					fieldtype: "Data",
 					label: __("Elementgruppe"),
-					options: "Elementgruppe",
 					default: card?.elementgruppe,
 				},
 				{
@@ -1150,12 +1258,20 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					fieldtype: "Link",
 					label: __("Operation"),
 					options: "Operation",
-					reqd: 1,
 					default: card?.operation,
 					onchange: () => {
-						if (!dialog.__required_hours_touched || !flt(dialog.get_value("required_hours"))) {
-							this.load_operation_hours(dialog);
-						}
+						this.load_operation_defaults(dialog);
+					},
+				},
+				{
+					fieldname: "task_type",
+					fieldtype: "Link",
+					label: __("Task Type"),
+					options: "Task Type",
+					default: card?.task_type,
+					get_query: () => this.get_production_planning_task_type_query(),
+					onchange: () => {
+						dialog.__task_type_touched = true;
 					},
 				},
 				{
@@ -1227,6 +1343,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 							project: values.project,
 							elementgruppe: values.elementgruppe,
 							operation: values.operation,
+							task_type: values.task_type,
 							start_date: this.to_system_datetime(moment(values.start_date, frappe.defaultDatetimeFormat)),
 							required_hours: requiredHours,
 							hours_per_employee_per_day: values.hours_per_employee_per_day,
@@ -1259,21 +1376,28 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		});
 
 		dialog.__required_hours_touched = is_edit;
+		dialog.__task_type_touched = is_edit;
 		dialog.show();
 
 		if (!is_edit && !flt(dialog.get_value("required_hours")) && dialog.get_value("operation")) {
-			this.load_operation_hours(dialog);
+			this.load_operation_defaults(dialog);
 		}
 	}
 
-	load_operation_hours(dialog) {
+	load_operation_defaults(dialog) {
 		const operation = dialog.get_value("operation");
 		if (!operation) {
 			return;
 		}
 
-		frappe.db.get_value("Operation", operation, "total_operation_time", (response) => {
+		frappe.db.get_value("Operation", operation, ["total_operation_time", "custom_task_type"], (response) => {
 			const message = response?.message || response || {};
+			if (!dialog.__task_type_touched) {
+				this.apply_production_planning_task_type(dialog, message.custom_task_type || "");
+			}
+			if (dialog.__required_hours_touched && flt(dialog.get_value("required_hours"))) {
+				return;
+			}
 			const totalOperationMinutes = flt(message.total_operation_time || 0);
 			if (totalOperationMinutes <= 0) {
 				return;
@@ -1282,6 +1406,35 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			dialog.set_value("required_hours", flt(totalOperationMinutes / 60, 2));
 			dialog.__required_hours_touched = false;
 		});
+	}
+
+	get_production_planning_task_type_query() {
+		return {
+			filters: {
+				custom_use_for_production_planning: 1,
+			},
+		};
+	}
+
+	apply_production_planning_task_type(target, task_type) {
+		if (!target?.set_value) {
+			return;
+		}
+
+		if (!task_type) {
+			target.set_value("task_type", "");
+			return;
+		}
+
+		frappe.db
+			.get_value("Task Type", task_type, "custom_use_for_production_planning")
+			.then((response) => {
+				const message = response?.message || response || {};
+				target.set_value("task_type", cint(message.custom_use_for_production_planning || message || 0) ? task_type : "");
+			})
+			.catch(() => {
+				target.set_value("task_type", "");
+			});
 	}
 
 	normalize_employee_values(value) {
@@ -1300,19 +1453,152 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return [value];
 	}
 
-	update_card_schedule(card, start_moment) {
+	update_card_schedule(card, start_moment, end_moment = null) {
 		frappe.call({
 			method:
 				"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.update_planning_card_schedule",
 			args: {
 				name: card.name,
 				start_date: this.to_system_datetime(start_moment),
+				end_date: end_moment ? this.to_system_datetime(end_moment) : null,
 			},
 			callback: () => {
 				frappe.show_alert({ message: __("Planning Card updated"), indicator: "green" });
 				this.refresh();
 			},
 		});
+	}
+
+	start_card_resize_interaction(event, mode) {
+		event.preventDefault();
+		event.stopPropagation();
+
+		const $card = $(event.currentTarget).closest(".aster-studio-card");
+		const card = this.get_card($card.data("name"));
+		if (!card) {
+			return;
+		}
+
+		const visibleStart = moment($card.data("visibleStart"), "YYYY-MM-DD");
+		const visibleEnd = moment($card.data("visibleEnd"), "YYYY-MM-DD");
+		const originalStart = this.to_user_moment(card.start_date);
+		const originalEnd = this.to_user_moment(card.end_date);
+
+		this.card_resize_interaction = {
+			mode,
+			card,
+			$card,
+			start_x: event.clientX,
+			visible_start: visibleStart,
+			visible_end: visibleEnd,
+			original_start: originalStart,
+			original_end: originalEnd,
+			preview_start: originalStart.clone(),
+			preview_end: originalEnd.clone(),
+		};
+
+		$card.addClass("is-resizing");
+	}
+
+	handle_card_resize_interaction_move(event) {
+		const interaction = this.card_resize_interaction;
+		if (!interaction) {
+			return;
+		}
+
+		const deltaDays = Math.round((event.clientX - interaction.start_x) / this.day_width);
+		const resizeDirection = deltaDays === 0 ? 0 : deltaDays > 0 ? 1 : -1;
+		let nextStart = interaction.original_start.clone();
+		let nextEnd = interaction.original_end.clone();
+
+		if (interaction.mode === "resize-start") {
+			nextStart.add(deltaDays, "days");
+			nextStart = this.snap_resize_date_to_planning_day(nextStart, resizeDirection);
+			if (nextStart.isAfter(nextEnd, "day")) {
+				nextStart = nextEnd.clone();
+			}
+			if (nextStart.isAfter(interaction.visible_end, "day")) {
+				nextStart = interaction.visible_end.clone().hour(nextStart.hour()).minute(nextStart.minute()).second(0);
+			}
+		}
+
+		if (interaction.mode === "resize-end") {
+			nextEnd.add(deltaDays, "days");
+			nextEnd = this.snap_resize_date_to_planning_day(nextEnd, resizeDirection);
+			if (nextEnd.isBefore(nextStart, "day")) {
+				nextEnd = nextStart.clone();
+			}
+			if (nextEnd.isBefore(interaction.visible_start, "day")) {
+				nextEnd = interaction.visible_start.clone().hour(nextEnd.hour()).minute(nextEnd.minute()).second(0);
+			}
+		}
+
+		interaction.preview_start = nextStart;
+		interaction.preview_end = nextEnd;
+		this.apply_card_resize_preview(interaction);
+	}
+
+	apply_card_resize_preview(interaction) {
+		const horizonWindow = this.get_horizon_window();
+		const horizonStart = horizonWindow.start.clone().startOf("day");
+		const horizonEnd = horizonWindow.end.clone().subtract(1, "day").startOf("day");
+		const overlapStart = moment.max(
+			interaction.preview_start.clone().startOf("day"),
+			horizonStart
+		);
+		const overlapEnd = moment.min(
+			interaction.preview_end.clone().startOf("day"),
+			horizonEnd
+		);
+
+		if (overlapStart.isAfter(overlapEnd, "day")) {
+			return;
+		}
+
+		const previewStartColumn = Math.max(overlapStart.diff(horizonStart, "days"), 0) + 1;
+		const previewEndColumn = Math.max(overlapEnd.diff(horizonStart, "days"), 0) + 2;
+
+		interaction.$card.css("--card-preview-column-start", previewStartColumn);
+		interaction.$card.css("--card-preview-column-end", previewEndColumn);
+	}
+
+	should_exclude_planning_weekends() {
+		return Boolean(cint(this.state.exclude_weekends_from_planning_duration || 0));
+	}
+
+	snap_resize_date_to_planning_day(date, direction = 0) {
+		const snapped = date.clone();
+		if (!this.should_exclude_planning_weekends() || !direction) {
+			return snapped;
+		}
+
+		while (snapped.isoWeekday() >= 6) {
+			snapped.add(direction > 0 ? 1 : -1, "day");
+		}
+
+		return snapped;
+	}
+
+	finish_card_resize_interaction() {
+		const interaction = this.card_resize_interaction;
+		if (!interaction) {
+			return;
+		}
+
+		const changed =
+			!interaction.preview_start.isSame(interaction.original_start, "day") ||
+			!interaction.preview_end.isSame(interaction.original_end, "day");
+
+		interaction.$card.removeClass("is-resizing");
+		interaction.$card.css("--card-preview-column-start", "");
+		interaction.$card.css("--card-preview-column-end", "");
+		this.card_resize_interaction = null;
+
+		if (!changed) {
+			return;
+		}
+
+		this.update_card_schedule(interaction.card, interaction.preview_start, interaction.preview_end);
 	}
 
 	get_card(name) {
@@ -1387,6 +1673,62 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	format_percent(value) {
 		return `${format_number(flt(value || 0), null, 1)}%`;
+	}
+
+	format_absence_datetime_parts(value) {
+		if (!value) {
+			return { day: "–", time: "" };
+		}
+
+		const rawValue = String(value).trim();
+		if (!rawValue) {
+			return { day: "–", time: "" };
+		}
+
+		let parsed = null;
+		if (rawValue.length <= 10) {
+			parsed = moment(rawValue, "YYYY-MM-DD", true);
+		} else {
+			parsed = this.to_user_moment(rawValue);
+			if (!parsed.isValid()) {
+				parsed = moment(rawValue, frappe.defaultDatetimeFormat, true);
+			}
+		}
+
+		if (!parsed?.isValid()) {
+			return { day: rawValue, time: "" };
+		}
+
+		const formattedTime = parsed.format("HH:mm:ss");
+		return {
+			day: parsed.format("DD.MM.YYYY"),
+			time: formattedTime === "00:00:00" ? "" : parsed.format("HH:mm"),
+		};
+	}
+
+	get_absence_schedule_markup(item) {
+		const start = this.format_absence_datetime_parts(item.from_date);
+		const end = this.format_absence_datetime_parts(item.to_date);
+		const startLabel = [start.day, start.time].filter(Boolean).join(" ");
+		const endLabel = [end.day, end.time].filter(Boolean).join(" ");
+
+		return `
+			<div class="aster-studio__absence-period">
+				<span class="aster-studio__absence-label">${__("From")}</span>
+				<span class="aster-studio__absence-day">${frappe.utils.escape_html(startLabel)}</span>
+				<span class="aster-studio__absence-label">${__("To")}</span>
+				<span class="aster-studio__absence-day">${frappe.utils.escape_html(endLabel)}</span>
+			</div>
+		`;
+	}
+
+	format_absence_duration(item) {
+		const hours = flt(item.overlap_days || 0) * 8;
+		if (hours > 8) {
+			return __("{0} days", [flt(item.overlap_days)]);
+		}
+
+		return this.format_hours_with_unit(hours);
 	}
 
 	format_date_range(start, end) {
@@ -1642,8 +1984,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		const totalDays = Math.max(visibleEnd.diff(visibleStart, "days") + 1, 1);
 		const leftPercent = (Math.max(overlapStart.diff(visibleStart, "days"), 0) / totalDays) * 100;
 		const widthPercent = ((overlapEnd.diff(overlapStart, "days") + 1) / totalDays) * 100;
-		interaction.$segment.css("--assignment-left", `${leftPercent}%`);
-		interaction.$segment.css("--assignment-width", `${widthPercent}%`);
+		interaction.$segment.css("--assignment-preview-left", `${leftPercent}%`);
+		interaction.$segment.css("--assignment-preview-width", `${widthPercent}%`);
 		interaction.$segment.find(".aster-studio-card__assignment-range").text(
 			interaction.preview_from.isSame(interaction.preview_to, "day")
 				? interaction.preview_from.format("DD.MM")
@@ -1662,8 +2004,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			!interaction.preview_to.isSame(interaction.original_to, "day");
 
 		interaction.$segment.removeClass("is-preview is-outside");
-		interaction.$segment.css("--assignment-left", "");
-		interaction.$segment.css("--assignment-width", "");
+		interaction.$segment.css("--assignment-preview-left", "");
+		interaction.$segment.css("--assignment-preview-width", "");
 		this.assignment_interaction = null;
 
 		if (!changed) {
@@ -1805,6 +2147,70 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				margin-bottom: 10px;
 			}
 
+			.aster-studio__task-type-summary {
+				margin-bottom: 12px;
+			}
+
+			.aster-studio__task-type-card {
+				background: var(--studio-panel);
+				border: 1px solid var(--studio-line);
+				border-radius: 24px;
+				box-shadow: var(--studio-shadow);
+				padding: 18px 20px;
+			}
+
+			.aster-studio__task-type-head h3 {
+				font-size: 16px;
+				font-weight: 700;
+				margin: 0;
+			}
+
+			.aster-studio__task-type-head p {
+				color: var(--studio-soft);
+				font-size: 13px;
+				margin: 4px 0 0;
+			}
+
+			.aster-studio__task-type-table {
+				display: grid;
+				margin-top: 14px;
+			}
+
+			.aster-studio__task-type-row {
+				align-items: center;
+				border-top: 1px solid var(--studio-line);
+				display: grid;
+				gap: 12px;
+				grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 1fr);
+				padding: 10px 0;
+			}
+
+			.aster-studio__task-type-row.is-head {
+				border-top: 0;
+				color: var(--studio-soft);
+				font-size: 12px;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				padding-top: 0;
+				text-transform: uppercase;
+			}
+
+			.aster-studio__task-type-label {
+				align-items: center;
+				display: flex;
+				gap: 10px;
+				font-weight: 600;
+				min-width: 0;
+			}
+
+			.aster-studio__task-type-swatch {
+				border-radius: 999px;
+				display: inline-block;
+				flex: 0 0 10px;
+				height: 10px;
+				width: 10px;
+			}
+
 			.aster-studio__metric,
 			.aster-studio__panel,
 			.aster-studio-week-pill {
@@ -1826,6 +2232,14 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				content: "";
 				inset: 0;
 				position: absolute;
+			}
+
+			.aster-studio__metric.is-good::after {
+				background: rgba(47, 111, 97, 0.08);
+			}
+
+			.aster-studio__metric.is-danger::after {
+				background: rgba(185, 75, 75, 0.1);
 			}
 
 			.aster-studio__metric-label,
@@ -1859,6 +2273,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				margin: 10px 0 4px;
 				position: relative;
 				z-index: 1;
+			}
+
+			.aster-studio__metric.is-danger .aster-studio__metric-value {
+				color: #b94b4b;
 			}
 
 			.aster-studio__metric-meta {
@@ -2146,6 +2564,43 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				margin-top: 10px;
 			}
 
+			.aster-studio-week-pill__meta .is-negative {
+				color: #b94b4b;
+			}
+
+			.aster-studio-week-pill__capacity {
+				margin-top: 10px;
+			}
+
+			.aster-studio-week-pill__capacity-bar {
+				background: rgba(36, 49, 60, 0.08);
+				border-radius: 999px;
+				display: flex;
+				height: 10px;
+				overflow: hidden;
+				position: relative;
+			}
+
+			.aster-studio-week-pill__capacity-bar .is-planned {
+				background: rgba(157, 18, 255, 0.85);
+				display: block;
+				height: 100%;
+			}
+
+			.aster-studio-week-pill__capacity-bar .is-open {
+				background: rgba(47, 111, 97, 0.68);
+				display: block;
+				height: 100%;
+			}
+
+			.aster-studio-week-pill__capacity-bar.is-overloaded {
+				box-shadow: inset 0 0 0 1px rgba(185, 75, 75, 0.25);
+			}
+
+			.aster-studio-week-pill__capacity-bar.is-overloaded .is-planned {
+				background: rgba(185, 75, 75, 0.88);
+			}
+
 			.aster-studio-week-pill__tags {
 				margin-top: 12px;
 			}
@@ -2229,6 +2684,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				font-size: 13px;
 				font-weight: 700;
 				margin-top: 8px;
+			}
+
+			.aster-studio-horizon__day-absence {
+				color: #c35f24;
+				font-size: 11px;
+				font-weight: 700;
+				margin-top: 3px;
 			}
 
 			.aster-studio-horizon__body--continuous {
@@ -2334,6 +2796,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				padding: 12px;
 			}
 
+			.aster-studio__list-card--absence {
+				padding: 10px 12px;
+			}
+
 			.aster-studio-card {
 				align-items: flex-start;
 				background: var(--card-color);
@@ -2344,7 +2810,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				display: flex;
 				flex-direction: column;
 				gap: 3px;
-				grid-column: var(--card-column-start) / var(--card-column-end);
+				grid-column: var(--card-preview-column-start, var(--card-column-start)) / var(--card-preview-column-end, var(--card-column-end));
 				grid-row: var(--card-lane);
 				cursor: grab;
 				min-height: var(--lane-height, 52px);
@@ -2357,6 +2823,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio-card.is-dragging {
 				opacity: 0.55;
+			}
+
+			.aster-studio-card.is-resizing {
+				box-shadow: 0 10px 24px rgba(28, 41, 49, 0.2);
+				cursor: ew-resize;
 			}
 
 			.aster-studio-card__week-highlight {
@@ -2379,6 +2850,42 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				min-width: 0;
 				position: relative;
 				z-index: 2;
+			}
+
+			.aster-studio-card__resize-handle {
+				bottom: 0;
+				cursor: ew-resize;
+				position: absolute;
+				top: 0;
+				width: 10px;
+				z-index: 4;
+			}
+
+			.aster-studio-card__resize-handle::after {
+				background: rgba(255, 255, 255, 0.78);
+				border-radius: 999px;
+				content: "";
+				height: 22px;
+				left: 50%;
+				opacity: 0;
+				position: absolute;
+				top: 50%;
+				transform: translate(-50%, -50%);
+				transition: opacity 0.18s ease;
+				width: 3px;
+			}
+
+			.aster-studio-card:hover .aster-studio-card__resize-handle::after,
+			.aster-studio-card.is-resizing .aster-studio-card__resize-handle::after {
+				opacity: 1;
+			}
+
+			.aster-studio-card__resize-handle--start {
+				left: 0;
+			}
+
+			.aster-studio-card__resize-handle--end {
+				right: 0;
 			}
 
 			.aster-studio-card__title,
@@ -2426,13 +2933,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				font-weight: 700;
 				gap: 4px;
 				height: 16px;
-				left: var(--assignment-left);
+				left: var(--assignment-preview-left, var(--assignment-left));
 				line-height: 1;
 				min-width: 10px;
 				padding: 0 5px;
 				position: absolute;
 				top: calc((var(--assignment-row) - 1) * 18px);
-				width: var(--assignment-width);
+				width: var(--assignment-preview-width, var(--assignment-width));
 				z-index: 2;
 			}
 
@@ -2476,6 +2983,84 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				margin-top: 6px;
 			}
 
+			.aster-studio__capacity-table-card,
+			.aster-studio__absence-table-card {
+				background: var(--studio-panel);
+				border: 1px solid var(--studio-line);
+				border-radius: 24px;
+				box-shadow: var(--studio-shadow);
+				padding: 16px 18px;
+			}
+
+			.aster-studio__capacity-table,
+			.aster-studio__absence-table {
+				display: grid;
+			}
+
+			.aster-studio__capacity-table-row,
+			.aster-studio__absence-table-row {
+				align-items: center;
+				border-top: 1px solid var(--studio-line);
+				display: grid;
+				gap: 12px;
+				padding: 10px 0;
+			}
+
+			.aster-studio__capacity-table-row {
+				grid-template-columns: minmax(0, 1.4fr) minmax(100px, 0.8fr) minmax(100px, 0.8fr) minmax(100px, 0.8fr);
+			}
+
+			.aster-studio__absence-table-row {
+				grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.8fr) minmax(90px, 0.7fr);
+			}
+
+			.aster-studio__capacity-table-row.is-head,
+			.aster-studio__absence-table-row.is-head {
+				border-top: 0;
+				color: var(--studio-soft);
+				font-size: 12px;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				padding-top: 0;
+				text-transform: uppercase;
+			}
+
+			.aster-studio__capacity-table-name,
+			.aster-studio__capacity-table-value,
+			.aster-studio__absence-table-name,
+			.aster-studio__absence-table-duration {
+				font-weight: 700;
+			}
+
+			.aster-studio__capacity-table-value.is-negative {
+				color: #b94b4b;
+			}
+
+			.aster-studio__absence-period {
+				align-items: baseline;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+			}
+
+			.aster-studio__absence-label {
+				color: var(--studio-soft);
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: 0.03em;
+				text-transform: uppercase;
+			}
+
+			.aster-studio__absence-day {
+				font-size: 12px;
+				font-weight: 700;
+			}
+
+			.aster-studio__absence-time {
+				color: var(--studio-soft);
+				font-size: 12px;
+			}
+
 			.aster-studio__progress {
 				background: rgba(36, 49, 60, 0.08);
 				border-radius: 999px;
@@ -2517,6 +3102,18 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					grid-template-columns: repeat(2, minmax(0, 1fr));
 				}
 
+				.aster-studio__task-type-row {
+					grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(100px, 1fr));
+				}
+
+				.aster-studio__capacity-table-row {
+					grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(90px, 0.8fr));
+				}
+
+				.aster-studio__absence-table-row {
+					grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(90px, 0.7fr);
+				}
+
 				.aster-studio__hero {
 					grid-template-columns: 1fr;
 				}
@@ -2528,6 +3125,18 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			@media (max-width: 680px) {
 				.aster-studio__metrics {
+					grid-template-columns: 1fr;
+				}
+
+				.aster-studio__task-type-row,
+				.aster-studio__task-type-row.is-head {
+					grid-template-columns: 1fr;
+				}
+
+				.aster-studio__capacity-table-row,
+				.aster-studio__capacity-table-row.is-head,
+				.aster-studio__absence-table-row,
+				.aster-studio__absence-table-row.is-head {
 					grid-template-columns: 1fr;
 				}
 			}

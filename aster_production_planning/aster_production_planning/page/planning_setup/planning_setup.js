@@ -1,16 +1,16 @@
-frappe.provide("aster_production_planning.planning_settings");
+frappe.provide("aster_production_planning.planning_setup");
 
 const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v3";
 
-frappe.pages["planning-settings"].on_page_load = function (wrapper) {
-	wrapper.planning_settings = new aster_production_planning.planning_settings.Page(wrapper);
+frappe.pages["planning-setup"].on_page_load = function (wrapper) {
+	wrapper.planning_setup = new aster_production_planning.planning_setup.Page(wrapper);
 };
 
-frappe.pages["planning-settings"].refresh = function (wrapper) {
-	wrapper.planning_settings?.refresh();
+frappe.pages["planning-setup"].refresh = function (wrapper) {
+	wrapper.planning_setup?.refresh();
 };
 
-aster_production_planning.planning_settings.Page = class PlanningSettingsPage {
+aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 	constructor(wrapper) {
 		this.wrapper = wrapper;
 		this.controls = {};
@@ -121,7 +121,7 @@ aster_production_planning.planning_settings.Page = class PlanningSettingsPage {
 
 	refresh() {
 		frappe.call({
-			method: "aster_production_planning.aster_production_planning.page.planning_settings.planning_settings.get_planning_settings",
+			method: "aster_production_planning.aster_production_planning.page.planning_setup.planning_setup.get_planning_settings",
 			callback: (response) => {
 				const settings = response.message || {};
 				this.controls.exclude_weekends_from_planning_duration.set_value(
@@ -136,7 +136,7 @@ aster_production_planning.planning_settings.Page = class PlanningSettingsPage {
 
 	save() {
 		frappe.call({
-			method: "aster_production_planning.aster_production_planning.page.planning_settings.planning_settings.save_planning_settings",
+			method: "aster_production_planning.aster_production_planning.page.planning_setup.planning_setup.save_planning_settings",
 			args: {
 				exclude_weekends_from_planning_duration: cint(
 					this.controls.exclude_weekends_from_planning_duration.get_value() || 0

@@ -8,7 +8,7 @@ from aster_production_planning.aster_production_planning.page.capacity_planning.
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	exclude_weekends_from_planning_duration,
 )
-from aster_production_planning.aster_production_planning.page.planning_settings.planning_settings import (
+from aster_production_planning.aster_production_planning.page.planning_setup.planning_setup import (
 	_parse_json_list,
 )
 

@@ -1,0 +1,4 @@
+- When click on Employee timeslot in a planning card, the size is shrinking and it makes the impression, as i would reduce the assigned days on that planning card.
+- Show sum of absende hours in PLanning calendar below the capacities on that day in a different color
+- show the absence Card a little bit differently: Split the display of Datetime into Day and Time. If from and to time is 00:00:00, do not show the time but just the Date
+
