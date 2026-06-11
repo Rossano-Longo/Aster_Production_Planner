@@ -1,6 +1,6 @@
 import frappe
 from frappe.model.document import Document
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 PLANNING_SETTINGS_DOCTYPE = "Planning Settings"
 
@@ -34,6 +34,8 @@ def serialize_planning_settings(doc=None) -> dict:
 			"departments": [],
 			"activity_types": [],
 			"exclude_weekends_from_planning_duration": 0,
+			"default_hours_per_employee_per_day": 8.0,
+			"default_hours_per_day_without_employees": 8.0,
 		}
 
 	return {
@@ -47,6 +49,14 @@ def serialize_planning_settings(doc=None) -> dict:
 		"exclude_weekends_from_planning_duration": cint(
 			getattr(doc, "exclude_weekends_from_planning_duration", 0)
 		),
+		"default_hours_per_employee_per_day": flt(
+			getattr(doc, "default_hours_per_employee_per_day", 8) or 8,
+			2,
+		),
+		"default_hours_per_day_without_employees": flt(
+			getattr(doc, "default_hours_per_day_without_employees", 8) or 8,
+			2,
+		),
 	}
 
 
@@ -55,6 +65,20 @@ def exclude_weekends_from_planning_duration(doc=None) -> bool:
 	if not settings_doc:
 		return False
 	return bool(cint(getattr(settings_doc, "exclude_weekends_from_planning_duration", 0)))
+
+
+def get_default_hours_per_employee_per_day(doc=None) -> float:
+	settings_doc = doc or get_planning_settings_doc()
+	if not settings_doc:
+		return 8.0
+	return flt(getattr(settings_doc, "default_hours_per_employee_per_day", 8) or 8, 2)
+
+
+def get_default_hours_per_day_without_employees(doc=None) -> float:
+	settings_doc = doc or get_planning_settings_doc()
+	if not settings_doc:
+		return 8.0
+	return flt(getattr(settings_doc, "default_hours_per_day_without_employees", 8) or 8, 2)
 
 
 class PlanningSettings(Document):

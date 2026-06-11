@@ -1,6 +1,6 @@
 frappe.provide("aster_production_planning.planning_setup");
 
-const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v3";
+const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v4";
 
 frappe.pages["planning-setup"].on_page_load = function (wrapper) {
 	wrapper.planning_setup = new aster_production_planning.planning_setup.Page(wrapper);
@@ -48,6 +48,8 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 						<h3>${__("Planning Card Duration")}</h3>
 						<p>${__("If enabled, Saturdays and Sundays are skipped when Planning Card end dates and allocated hours are calculated. Example: 400 planned hours with 8 hours per day become 50 working days.")}</p>
 						<div class="aster-settings__field" data-field="exclude_weekends_from_planning_duration"></div>
+						<div class="aster-settings__field" data-field="default_hours_per_employee_per_day"></div>
+						<div class="aster-settings__field" data-field="default_hours_per_day_without_employees"></div>
 					</section>
 					<section class="aster-settings__card">
 						<h3>${__("Employees")}</h3>
@@ -74,6 +76,14 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 			"exclude_weekends_from_planning_duration",
 			__("Exclude weekends from Planning Card duration")
 		);
+		this.controls.default_hours_per_employee_per_day = this.make_float_control(
+			"default_hours_per_employee_per_day",
+			__("Default hours per employee per day")
+		);
+		this.controls.default_hours_per_day_without_employees = this.make_float_control(
+			"default_hours_per_day_without_employees",
+			__("Default hours per day without employees")
+		);
 		this.controls.employees = this.make_multiselect_control("employees", __("Employees"), "Employee");
 		this.controls.departments = this.make_multiselect_control("departments", __("Departments"), "Department");
 		this.controls.activity_types = this.make_multiselect_control("activity_types", __("Activity Types"), "Activity Type");
@@ -87,6 +97,23 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				fieldtype: "Check",
 				label,
 				default: 0,
+			},
+			render_input: true,
+		});
+
+		control.refresh();
+		return control;
+	}
+
+	make_float_control(fieldname, label) {
+		const control = frappe.ui.form.make_control({
+			parent: this.$layout.find(`[data-field="${fieldname}"]`).get(0),
+			df: {
+				fieldname,
+				fieldtype: "Float",
+				label,
+				default: 8,
+				precision: 2,
 			},
 			render_input: true,
 		});
@@ -127,6 +154,12 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				this.controls.exclude_weekends_from_planning_duration.set_value(
 					cint(settings.exclude_weekends_from_planning_duration || 0)
 				);
+				this.controls.default_hours_per_employee_per_day.set_value(
+					flt(settings.default_hours_per_employee_per_day || 8, 2)
+				);
+				this.controls.default_hours_per_day_without_employees.set_value(
+					flt(settings.default_hours_per_day_without_employees || 8, 2)
+				);
 				this.controls.employees.set_value(settings.employees || []);
 				this.controls.departments.set_value(settings.departments || []);
 				this.controls.activity_types.set_value(settings.activity_types || []);
@@ -140,6 +173,14 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 			args: {
 				exclude_weekends_from_planning_duration: cint(
 					this.controls.exclude_weekends_from_planning_duration.get_value() || 0
+				),
+				default_hours_per_employee_per_day: flt(
+					this.controls.default_hours_per_employee_per_day.get_value() || 8,
+					2
+				),
+				default_hours_per_day_without_employees: flt(
+					this.controls.default_hours_per_day_without_employees.get_value() || 8,
+					2
 				),
 				employees: this.normalize_values(this.controls.employees.get_value()),
 				departments: this.normalize_values(this.controls.departments.get_value()),

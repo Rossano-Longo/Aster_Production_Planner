@@ -2,7 +2,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	PLANNING_SETTINGS_DOCTYPE,
@@ -71,11 +71,15 @@ def save_planning_settings(
 	departments=None,
 	activity_types=None,
 	exclude_weekends_from_planning_duration=0,
+	default_hours_per_employee_per_day=8,
+	default_hours_per_day_without_employees=8,
 ) -> dict:
 	_require_access()
 	doc = _get_settings_doc() or frappe.new_doc(PLANNING_SETTINGS_DOCTYPE)
 	doc.update({"doctype": PLANNING_SETTINGS_DOCTYPE})
 	doc.exclude_weekends_from_planning_duration = cint(exclude_weekends_from_planning_duration)
+	doc.default_hours_per_employee_per_day = flt(default_hours_per_employee_per_day or 0, 2)
+	doc.default_hours_per_day_without_employees = flt(default_hours_per_day_without_employees or 0, 2)
 	doc.set("capacity_employees", [{"employee": employee} for employee in _parse_json_list(employees)])
 	doc.set("capacity_departments", [{"department": department} for department in _parse_json_list(departments)])
 	doc.set(

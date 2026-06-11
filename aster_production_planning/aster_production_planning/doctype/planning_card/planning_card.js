@@ -12,20 +12,40 @@ frappe.ui.form.on("Planning Card", {
 	},
 
 	start_date(frm) {
-		update_end_date(frm);
+		update_end_date(frm, frm.__planning_schedule_mode || "required_hours");
+	},
+
+	end_date(frm) {
+		if (frm.__syncing_planning_schedule) {
+			return;
+		}
+
+		frm.__planning_schedule_mode = "end_date";
+		update_end_date(frm, "end_date");
 	},
 
 	required_hours(frm) {
 		sync_legacy_duration(frm);
-		update_end_date(frm);
+		if (frm.__syncing_planning_schedule) {
+			return;
+		}
+
+		frm.__planning_schedule_mode = "required_hours";
+		update_end_date(frm, "required_hours");
+	},
+
+	planned_employee_count(frm) {
+		frm.__planning_schedule_mode = "required_hours";
+		sync_planned_employee_hours(frm);
+		update_end_date(frm, "required_hours");
 	},
 
 	hours_per_employee_per_day(frm) {
-		update_end_date(frm);
+		update_end_date(frm, frm.__planning_schedule_mode || "required_hours");
 	},
 
 	adjust_end_date_for_parallel_work(frm) {
-		update_end_date(frm);
+		update_end_date(frm, frm.__planning_schedule_mode || "required_hours");
 	},
 });
 
@@ -36,37 +56,77 @@ frappe.ui.form.on("Planning Card Assignment", {
 });
 
 function ensure_planning_duration_settings(frm) {
-	if (frm.__exclude_weekends_from_planning_duration !== undefined) {
-		return Promise.resolve(frm.__exclude_weekends_from_planning_duration);
+	if (frm.__planning_duration_settings) {
+		return Promise.resolve(frm.__planning_duration_settings);
 	}
 
-	if (frm.__exclude_weekends_from_planning_duration_request) {
-		return frm.__exclude_weekends_from_planning_duration_request;
+	if (frm.__planning_duration_settings_request) {
+		return frm.__planning_duration_settings_request;
 	}
 
-	frm.__exclude_weekends_from_planning_duration_request = frappe.db
-		.get_single_value("Planning Settings", "exclude_weekends_from_planning_duration")
-		.then((value) => {
-			frm.__exclude_weekends_from_planning_duration = cint(value || 0);
-			return frm.__exclude_weekends_from_planning_duration;
+	frm.__planning_duration_settings_request = frappe.call({
+		method:
+			"aster_production_planning.aster_production_planning.page.planning_setup.planning_setup.get_planning_settings",
+	})
+		.then((response) => {
+			frm.__planning_duration_settings = response?.message || {
+				exclude_weekends_from_planning_duration: 0,
+				default_hours_per_employee_per_day: 8,
+				default_hours_per_day_without_employees: 8,
+			};
+			return frm.__planning_duration_settings;
 		})
 		.catch(() => {
-			frm.__exclude_weekends_from_planning_duration = 0;
-			return 0;
+			frm.__planning_duration_settings = {
+				exclude_weekends_from_planning_duration: 0,
+				default_hours_per_employee_per_day: 8,
+				default_hours_per_day_without_employees: 8,
+			};
+			return frm.__planning_duration_settings;
 		})
 		.finally(() => {
-			frm.__exclude_weekends_from_planning_duration_request = null;
+			frm.__planning_duration_settings_request = null;
 		});
 
-	return frm.__exclude_weekends_from_planning_duration_request;
+	return frm.__planning_duration_settings_request;
 }
 
-function update_end_date(frm) {
-	ensure_planning_duration_settings(frm).then(() => apply_end_date(frm));
+function update_end_date(frm, source = "required_hours") {
+	ensure_planning_duration_settings(frm).then(() => apply_end_date(frm, source));
 }
 
-function apply_end_date(frm) {
+function apply_end_date(frm, source = "required_hours") {
 	if (!frm.doc.start_date) {
+		return;
+	}
+
+	const hoursPerEmployeePerDay = flt(frm.doc.hours_per_employee_per_day || 0);
+	if (hoursPerEmployeePerDay <= 0) {
+		return;
+	}
+
+	const startMoment = moment(frm.doc.start_date).startOf("day");
+	if (source === "end_date") {
+		let endMoment = frm.doc.end_date ? moment(frm.doc.end_date).startOf("day") : startMoment.clone();
+		if (endMoment.isBefore(startMoment, "day")) {
+			endMoment = startMoment.clone();
+		}
+
+		const plannedDays = Math.max(
+			count_planning_days(startMoment, endMoment, Boolean(cint(frm.__planning_duration_settings?.exclude_weekends_from_planning_duration || 0))),
+			1
+		);
+		const requiredHours = flt(plannedDays * hoursPerEmployeePerDay, 2);
+
+		frm.__syncing_planning_schedule = true;
+		Promise.resolve(
+			frm.set_value({
+				end_date: endMoment.clone().hour(23).minute(59).second(59).format(frappe.defaultDatetimeFormat),
+				required_hours: requiredHours,
+			})
+		).finally(() => {
+			frm.__syncing_planning_schedule = false;
+		});
 		return;
 	}
 
@@ -75,20 +135,22 @@ function apply_end_date(frm) {
 	}
 
 	const requiredHours = flt(frm.doc.required_hours);
-	const hoursPerEmployeePerDay = flt(frm.doc.hours_per_employee_per_day || 0);
-	if (requiredHours <= 0 || hoursPerEmployeePerDay <= 0) {
+	if (requiredHours <= 0) {
 		return;
 	}
 
-	const assignments = (frm.doc.assigned_employees || []).filter((row) => row.employee);
-	const employeeCount = frm.doc.adjust_end_date_for_parallel_work ? Math.max(assignments.length, 1) : 1;
-	const plannedDays = Math.max(Math.ceil(requiredHours / (hoursPerEmployeePerDay * employeeCount)), 1);
-	const excludeWeekends = Boolean(cint(frm.__exclude_weekends_from_planning_duration || 0));
-	const end_date = get_last_planned_moment(moment(frm.doc.start_date), plannedDays, excludeWeekends).format(
-		frappe.defaultDatetimeFormat
-	);
+	const plannedDays = Math.max(Math.ceil(requiredHours / hoursPerEmployeePerDay), 1);
+	const excludeWeekends = Boolean(cint(frm.__planning_duration_settings?.exclude_weekends_from_planning_duration || 0));
+	const end_date = get_last_planned_moment(startMoment, plannedDays, excludeWeekends)
+		.hour(23)
+		.minute(59)
+		.second(59)
+		.format(frappe.defaultDatetimeFormat);
 
-	frm.set_value("end_date", end_date);
+	frm.__syncing_planning_schedule = true;
+	Promise.resolve(frm.set_value("end_date", end_date)).finally(() => {
+		frm.__syncing_planning_schedule = false;
+	});
 }
 
 function get_last_planned_moment(startMoment, plannedDays, excludeWeekends) {
@@ -109,6 +171,55 @@ function get_last_planned_moment(startMoment, plannedDays, excludeWeekends) {
 
 function sync_legacy_duration(frm) {
 	frm.set_value("duration_in_hours", flt(frm.doc.required_hours || 0));
+}
+
+function sync_planned_employee_hours(frm) {
+	if (frm.__syncing_planned_employee_hours) {
+		return;
+	}
+
+	const plannedEmployeeCount = Math.max(cint(frm.doc.planned_employee_count || 0), 0);
+	const totalDailyHours = get_default_total_daily_hours(frm, plannedEmployeeCount);
+	const updates = {};
+
+	if (cint(frm.doc.planned_employee_count || 0) !== plannedEmployeeCount) {
+		updates.planned_employee_count = plannedEmployeeCount;
+	}
+
+	if (flt(frm.doc.hours_per_employee_per_day || 0) !== totalDailyHours) {
+		updates.hours_per_employee_per_day = totalDailyHours;
+	}
+
+	if (!Object.keys(updates).length) {
+		return;
+	}
+
+	frm.__syncing_planned_employee_hours = true;
+	Promise.resolve(frm.set_value(updates)).finally(() => {
+		frm.__syncing_planned_employee_hours = false;
+	});
+}
+
+function get_default_total_daily_hours(frm, plannedEmployeeCount) {
+	const plannedCount = Math.max(cint(plannedEmployeeCount || 0), 0);
+	const defaultEmployeeHours = flt(frm.__planning_duration_settings?.default_hours_per_employee_per_day || 8, 2) || 8;
+	const defaultUnassignedHours = flt(frm.__planning_duration_settings?.default_hours_per_day_without_employees || 8, 2) || 8;
+	return plannedCount > 0 ? flt(plannedCount * defaultEmployeeHours, 2) : defaultUnassignedHours;
+}
+
+function count_planning_days(startMoment, endMoment, excludeWeekends) {
+	const cursor = startMoment.clone().startOf("day");
+	const lastDay = endMoment.clone().startOf("day");
+	let plannedDays = 0;
+
+	while (!cursor.isAfter(lastDay, "day")) {
+		if (!excludeWeekends || cursor.isoWeekday() < 6) {
+			plannedDays += 1;
+		}
+		cursor.add(1, "day");
+	}
+
+	return plannedDays;
 }
 
 function load_operation_defaults(frm) {

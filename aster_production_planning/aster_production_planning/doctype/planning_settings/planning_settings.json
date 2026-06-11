@@ -8,6 +8,8 @@
  "field_order": [
   "planning_card_duration_section",
   "exclude_weekends_from_planning_duration",
+  "default_hours_per_employee_per_day",
+  "default_hours_per_day_without_employees",
   "capacity_employees_section",
   "capacity_employees",
   "capacity_departments_section",
@@ -27,6 +29,24 @@
    "fieldname": "exclude_weekends_from_planning_duration",
    "fieldtype": "Check",
    "label": "Exclude Weekends from Planning Card Duration"
+  },
+  {
+   "default": "8",
+   "description": "Default working hours per employee and day used for Planning Cards.",
+   "fieldname": "default_hours_per_employee_per_day",
+   "fieldtype": "Float",
+   "label": "Default Hours per Employee per Day",
+   "non_negative": 1,
+   "precision": "2"
+  },
+  {
+   "default": "8",
+   "description": "Default working hours per day used when a Planning Card has no employees assigned or planned.",
+   "fieldname": "default_hours_per_day_without_employees",
+   "fieldtype": "Float",
+   "label": "Default Hours per Day without Employees",
+   "non_negative": 1,
+   "precision": "2"
   },
   {
    "fieldname": "capacity_employees_section",

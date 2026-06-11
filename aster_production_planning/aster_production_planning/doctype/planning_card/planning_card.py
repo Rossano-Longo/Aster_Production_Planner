@@ -4,10 +4,12 @@ from math import ceil
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, get_datetime, get_datetime_str, getdate
+from frappe.utils import cint, flt, get_datetime, get_datetime_str, getdate
 
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	exclude_weekends_from_planning_duration,
+	get_default_hours_per_day_without_employees,
+	get_default_hours_per_employee_per_day,
 )
 
 OPERATION_DOCTYPE = "Operation"
@@ -51,9 +53,13 @@ def get_last_planned_day(start_date, planned_days: int, exclude_weekends: bool =
 class PlanningCard(Document):
 	def validate(self):
 		self.set_task_type_from_operation()
-		self.set_required_hours()
 		self.validate_planning_inputs()
-		self.set_end_date()
+		self.normalize_planning_dates()
+		if getattr(getattr(self, "flags", None), "manual_end_date", False) and self.end_date:
+			self.set_required_hours_from_end_date()
+		else:
+			self.set_required_hours()
+			self.set_end_date()
 		self.set_assignment_defaults()
 		self.set_allocated_hours()
 
@@ -71,15 +77,61 @@ class PlanningCard(Document):
 		if not self.start_date:
 			return
 
-		if self.required_hours <= 0:
-			frappe.throw(_("Required Hours must be greater than zero"))
+		assigned_count = self.get_assigned_employee_count()
+		if self.planned_employee_count in (None, ""):
+			self.planned_employee_count = assigned_count if assigned_count > 0 else 0
+
+		self.planned_employee_count = max(cint(self.planned_employee_count), 0)
+		if assigned_count > 0 and self.planned_employee_count <= 0:
+			self.planned_employee_count = assigned_count
 
 		if self.hours_per_employee_per_day in (None, ""):
-			self.hours_per_employee_per_day = 8
+			self.hours_per_employee_per_day = self.get_default_total_daily_hours()
+
+		# Convert legacy cards that stored daily hours per employee while parallel work
+		# was enabled into a total daily card capacity.
+		if (
+			not getattr(self, "flags", None) or not getattr(self.flags, "ignore_parallel_hours_migration", False)
+		) and cint(self.adjust_end_date_for_parallel_work) and assigned_count > 1:
+			current_daily_hours = flt(self.hours_per_employee_per_day or 0, 2)
+			expected_team_hours = flt(assigned_count * self.get_default_employee_hours_per_day(), 2)
+			legacy_employee_hours = flt(current_daily_hours * assigned_count, 2)
+			if current_daily_hours > 0 and current_daily_hours < expected_team_hours:
+				self.hours_per_employee_per_day = legacy_employee_hours
 
 		self.hours_per_employee_per_day = flt(self.hours_per_employee_per_day, 2)
 		if self.hours_per_employee_per_day <= 0:
-			frappe.throw(_("Calculated Hours per Employee per Day must be greater than zero"))
+			frappe.throw(_("Calculated Hours per Day must be greater than zero"))
+
+		if (
+			not getattr(getattr(self, "flags", None), "manual_end_date", False)
+			and flt(self.required_hours or 0) <= 0
+		):
+			frappe.throw(_("Required Hours must be greater than zero"))
+
+	def get_assigned_employee_count(self) -> int:
+		return len([row for row in self.assigned_employees if row.employee])
+
+	def get_planned_employee_count(self) -> int:
+		return max(cint(getattr(self, "planned_employee_count", 0) or 0), 0)
+
+	def get_assignment_daily_hours(self) -> float:
+		planned_count = self.get_planned_employee_count()
+		if planned_count <= 0:
+			return flt(self.hours_per_employee_per_day or 0, 2)
+		return flt(self.hours_per_employee_per_day or 0, 2) / planned_count
+
+	def get_default_employee_hours_per_day(self) -> float:
+		return get_default_hours_per_employee_per_day()
+
+	def get_default_unassigned_hours_per_day(self) -> float:
+		return get_default_hours_per_day_without_employees()
+
+	def get_default_total_daily_hours(self) -> float:
+		planned_count = self.get_planned_employee_count()
+		if planned_count > 0:
+			return flt(planned_count * self.get_default_employee_hours_per_day(), 2)
+		return flt(self.get_default_unassigned_hours_per_day(), 2)
 
 	def get_operation_hours(self) -> float:
 		if not self.operation:
@@ -99,10 +151,7 @@ class PlanningCard(Document):
 		self.task_type = task_type or None
 
 	def get_effective_employee_count(self) -> int:
-		assigned_count = len([row for row in self.assigned_employees if row.employee])
-		if self.adjust_end_date_for_parallel_work:
-			return max(assigned_count, 1)
-		return 1
+		return self.get_planned_employee_count()
 
 	def get_assignment_window(self, row) -> tuple:
 		card_start = get_datetime(self.start_date)
@@ -122,10 +171,36 @@ class PlanningCard(Document):
 			return 0.0
 
 		planned_days = count_planning_days(start_date, end_date, self.should_exclude_weekends())
-		return flt(planned_days * flt(self.hours_per_employee_per_day), 2)
+		return flt(planned_days * self.get_assignment_daily_hours(), 2)
 
 	def should_exclude_weekends(self) -> bool:
 		return exclude_weekends_from_planning_duration()
+
+	def normalize_planning_dates(self):
+		if self.start_date:
+			start_date = get_datetime(self.start_date)
+			self.start_date = get_datetime_str(datetime.combine(start_date.date(), time(0, 0, 0)))
+		if self.end_date:
+			end_date = get_datetime(self.end_date)
+			self.end_date = get_datetime_str(datetime.combine(end_date.date(), time(23, 59, 59)))
+
+	def set_required_hours_from_end_date(self):
+		if not self.start_date:
+			return
+
+		start_date = get_datetime(self.start_date)
+		end_date = get_datetime(self.end_date) if self.end_date else start_date
+		if end_date < start_date:
+			end_date = start_date
+			self.end_date = get_datetime_str(datetime.combine(start_date.date(), time(23, 59, 59)))
+
+		planned_days = count_planning_days(
+			start_date.date(),
+			end_date.date(),
+			self.should_exclude_weekends(),
+		)
+		self.required_hours = flt(max(planned_days, 1) * flt(self.hours_per_employee_per_day or 0, 2), 2)
+		self.duration_in_hours = self.required_hours
 
 	def set_assignment_defaults(self):
 		if not self.start_date:
@@ -150,9 +225,9 @@ class PlanningCard(Document):
 		)
 
 	def get_planned_days(self) -> int:
-		effective_daily_hours = flt(self.hours_per_employee_per_day) * self.get_effective_employee_count()
+		effective_daily_hours = flt(self.hours_per_employee_per_day, 2)
 		if effective_daily_hours <= 0:
-			frappe.throw(_("Calculated Hours per Employee per Day must be greater than zero"))
+			frappe.throw(_("Calculated Hours per Day must be greater than zero"))
 
 		return max(int(ceil(flt(self.required_hours) / effective_daily_hours)), 1)
 
@@ -177,7 +252,7 @@ def backfill_planning_cards() -> str:
 		if doc.required_hours in (None, "") or flt(doc.required_hours) <= 0:
 			doc.required_hours = flt(doc.duration_in_hours) or doc.get_operation_hours()
 		if doc.hours_per_employee_per_day in (None, ""):
-			doc.hours_per_employee_per_day = 8
+			doc.hours_per_employee_per_day = doc.get_default_total_daily_hours()
 		if flt(doc.required_hours) <= 0:
 			skipped += 1
 			continue

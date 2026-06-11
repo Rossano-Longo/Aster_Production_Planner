@@ -2,6 +2,7 @@ import frappe
 
 from aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning import (
 	create_planning_card as _create_planning_card,
+	delete_planning_card as _delete_planning_card,
 	get_planning_card_detail as _get_planning_card_detail,
 	get_planning_dashboard_data as _get_planning_dashboard_data,
 	update_planning_card as _update_planning_card,
@@ -10,8 +11,22 @@ from aster_production_planning.aster_production_planning.page.capacity_planning.
 
 
 @frappe.whitelist()
-def get_planning_dashboard_data(start_date: str, end_date: str, activity_types=None) -> dict:
-	return _get_planning_dashboard_data(start_date, end_date, activity_types)
+def get_planning_dashboard_data(
+	start_date: str,
+	end_date: str,
+	activity_types=None,
+	projects=None,
+	task_types=None,
+	operations=None,
+) -> dict:
+	return _get_planning_dashboard_data(
+		start_date,
+		end_date,
+		activity_types,
+		projects,
+		task_types,
+		operations,
+	)
 
 
 @frappe.whitelist()
@@ -21,12 +36,14 @@ def get_planning_card_detail(name: str, activity_types=None, range_start=None, r
 
 @frappe.whitelist()
 def create_planning_card(
-	project: str,
+	project: str | None,
 	start_date: str,
+	end_date: str | None = None,
 	operation: str | None = None,
 	elementgruppe: str | None = None,
 	task_type: str | None = None,
 	required_hours=None,
+	planned_employee_count=None,
 	hours_per_employee_per_day=None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=0,
@@ -38,7 +55,9 @@ def create_planning_card(
 		operation=operation,
 		task_type=task_type,
 		start_date=start_date,
+		end_date=end_date,
 		required_hours=required_hours,
+		planned_employee_count=planned_employee_count,
 		hours_per_employee_per_day=hours_per_employee_per_day,
 		assigned_employees=assigned_employees,
 		adjust_end_date_for_parallel_work=adjust_end_date_for_parallel_work,
@@ -54,7 +73,9 @@ def update_planning_card(
 	operation: str | None = None,
 	task_type: str | None = None,
 	start_date: str | None = None,
+	end_date: str | None = None,
 	required_hours=None,
+	planned_employee_count=None,
 	hours_per_employee_per_day=None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=None,
@@ -67,7 +88,9 @@ def update_planning_card(
 		operation=operation,
 		task_type=task_type,
 		start_date=start_date,
+		end_date=end_date,
 		required_hours=required_hours,
+		planned_employee_count=planned_employee_count,
 		hours_per_employee_per_day=hours_per_employee_per_day,
 		assigned_employees=assigned_employees,
 		adjust_end_date_for_parallel_work=adjust_end_date_for_parallel_work,
@@ -78,3 +101,8 @@ def update_planning_card(
 @frappe.whitelist()
 def update_planning_card_schedule(name: str, start_date: str, end_date: str | None = None) -> dict:
 	return _update_planning_card_schedule(name, start_date, end_date)
+
+
+@frappe.whitelist()
+def delete_planning_card(name: str) -> dict:
+	return _delete_planning_card(name)

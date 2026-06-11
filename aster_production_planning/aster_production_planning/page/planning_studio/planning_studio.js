@@ -18,10 +18,40 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.drag_card_name = null;
 		this.card_resize_interaction = null;
 		this.assignment_interaction = null;
+		this.card_create_interaction = null;
 		this.active_card_name = null;
 		this.card_detail = null;
 		this.active_week = null;
 		this.day_width = 64;
+		this.horizon_days = [];
+		this.horizon_segments = null;
+		this.open_filter_picker = null;
+		this.filter_request_ids = {};
+		this.filter_search = {
+			projects: "",
+			task_types: "",
+			operations: "",
+		};
+		this.filter_options = {
+			projects: [],
+			task_types: [],
+			operations: [],
+		};
+		this.filter_values = {
+			projects: [],
+			task_types: [],
+			operations: [],
+		};
+		this.filter_drafts = {
+			projects: [],
+			task_types: [],
+			operations: [],
+		};
+		this.filter_label_cache = {
+			projects: {},
+			task_types: {},
+			operations: {},
+		};
 		this.state = {
 			planning_cards: [],
 			summary: {},
@@ -29,11 +59,15 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			daily_capacity: [],
 			daily_absences: [],
 			absences: [],
+			planning_settings: {
+				default_hours_per_employee_per_day: 8,
+				default_hours_per_day_without_employees: 8,
+			},
 		};
 
 		this.make_page();
-		this.make_filters();
 		this.make_layout();
+		this.make_filters();
 		this.bind_actions();
 		this.ensure_styles();
 		this.refresh();
@@ -50,16 +84,33 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	}
 
 	make_filters() {
-		this.activity_type_filter = this.page.add_field({
-			fieldname: "activity_types",
-			label: __("Capacity Activities"),
-			fieldtype: "MultiSelectList",
-			placeholder: __("All activity types"),
-			get_data(txt) {
-				return frappe.db.get_link_options("Activity Type", txt);
+			this.filter_definitions = {
+				projects: {
+					label: __("Projects"),
+					placeholder: __("All projects"),
+					get_data: (txt) =>
+						frappe.db.get_link_options("Project", txt, {
+							status: "Open",
+						}),
+				},
+			task_types: {
+				label: __("Task Types"),
+				placeholder: __("All task types"),
+				get_data: (txt) =>
+					frappe.db.get_link_options(
+						"Task Type",
+						txt,
+						this.get_production_planning_task_type_query().filters || {}
+					),
 			},
-			onchange: () => this.refresh(),
-		});
+			operations: {
+				label: __("Operations"),
+				placeholder: __("All operations"),
+				get_data: (txt) => frappe.db.get_link_options("Operation", txt),
+			},
+		};
+
+		this.render_filter_pickers();
 	}
 
 	make_layout() {
@@ -112,6 +163,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 								<h3>${__("Planning Horizon")}</h3>
 							</div>
 						</div>
+						<div class="aster-studio__calendar-filters"></div>
 						<div class="aster-studio__horizon"></div>
 					</section>
 
@@ -150,12 +202,285 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.$range = this.$layout.find(".aster-studio__range");
 		this.$overview_range = this.$layout.find(".aster-studio__overview-range");
 		this.$overview = this.$layout.find(".aster-studio__overview");
+		this.$calendar_filters = this.$layout.find(".aster-studio__calendar-filters");
 		this.$horizon = this.$layout.find(".aster-studio__horizon");
 		this.$employee_list = this.$layout.find(".aster-studio__employee-list");
 		this.$activity_list = this.$layout.find(".aster-studio__activity-list");
 		this.$task_type_summary = this.$layout.find(".aster-studio__task-type-summary");
 		this.$drawer = this.$layout.find(".aster-studio-drawer");
 		this.$drawer_content = this.$layout.find(".aster-studio-drawer__content");
+	}
+
+	render_filter_pickers() {
+		if (!this.$calendar_filters?.length) {
+			return;
+		}
+
+		this.$calendar_filters.html(
+			Object.keys(this.filter_definitions)
+				.map((filter_name) => this.get_filter_picker_markup(filter_name))
+				.join("")
+		);
+	}
+
+	get_filter_picker_markup(filter_name) {
+		const definition = this.filter_definitions[filter_name];
+		const applied_values = this.get_filter_values(filter_name);
+		const selected_count = applied_values.length;
+		const is_open = this.open_filter_picker === filter_name;
+		const summary = this.get_filter_summary(filter_name, applied_values);
+		const draft_values = is_open ? this.get_filter_draft_values(filter_name) : applied_values;
+		const search_text = this.filter_search[filter_name] || "";
+		const options = this.filter_options[filter_name] || [];
+
+		return `
+			<div class="aster-filter-picker ${is_open ? "is-open" : ""}" data-filter="${frappe.utils.escape_html(filter_name)}">
+				<div class="aster-filter-picker__label">${frappe.utils.escape_html(definition.label)}</div>
+				<button
+					type="button"
+					class="aster-filter-picker__trigger"
+					aria-haspopup="true"
+					aria-expanded="${is_open ? "true" : "false"}"
+				>
+					<span class="aster-filter-picker__trigger-text">${frappe.utils.escape_html(summary || definition.placeholder)}</span>
+					<span class="aster-filter-picker__trigger-meta">
+						${selected_count ? `<span class="aster-filter-picker__count">${selected_count}</span>` : ""}
+						<span class="aster-filter-picker__caret">${frappe.utils.icon(is_open ? "chevron-up" : "chevron-down", "xs")}</span>
+					</span>
+				</button>
+				<div class="aster-filter-picker__menu" aria-hidden="${is_open ? "false" : "true"}">
+					<div class="aster-filter-picker__search">
+						<input
+							type="text"
+							class="form-control input-xs aster-filter-picker__search-input"
+							placeholder="${__("Search")}"
+							value="${frappe.utils.escape_html(search_text)}"
+						/>
+					</div>
+					<div class="aster-filter-picker__options">
+						${
+							options.length
+								? options
+										.map((option) => {
+											const is_checked = draft_values.includes(option.value);
+											return `
+												<label class="aster-filter-picker__option">
+													<input
+														type="checkbox"
+														class="aster-filter-picker__checkbox"
+														value="${frappe.utils.escape_html(option.value)}"
+														${is_checked ? "checked" : ""}
+													/>
+													<span>${frappe.utils.escape_html(option.label || option.value)}</span>
+												</label>
+											`;
+										})
+										.join("")
+								: `<div class="aster-filter-picker__empty">${__("No options found")}</div>`
+						}
+					</div>
+					<div class="aster-filter-picker__actions">
+						<button type="button" class="btn btn-default btn-xs aster-filter-picker__reset">${__("Zurücksetzen")}</button>
+						<button type="button" class="btn btn-primary btn-xs aster-filter-picker__apply">${__("Fertig")}</button>
+					</div>
+				</div>
+			</div>
+		`;
+	}
+
+	get_filter_values(filter_name) {
+		return Array.isArray(this.filter_values[filter_name]) ? this.filter_values[filter_name] : [];
+	}
+
+	get_filter_draft_values(filter_name) {
+		return Array.isArray(this.filter_drafts[filter_name]) ? this.filter_drafts[filter_name] : [];
+	}
+
+	get_filter_summary(filter_name, values) {
+		const definition = this.filter_definitions[filter_name];
+		if (!values?.length) {
+			return definition?.placeholder || "";
+		}
+
+		const labels = values
+			.map((value) => this.filter_label_cache[filter_name]?.[value] || value)
+			.filter(Boolean);
+
+		if (labels.length <= 2) {
+			return labels.join(", ");
+		}
+
+		return labels.slice(0, 2).join(", ");
+	}
+
+	process_filter_options(filter_name, options) {
+		const processed = (options || []).map((option) => {
+			if (typeof option === "string") {
+				return {
+					label: option,
+					value: option,
+				};
+			}
+			return {
+				label: option.label || option.value,
+				value: option.value || option.label,
+			};
+		});
+
+		const selected_options = this.get_filter_draft_values(filter_name).map((value) => ({
+			value,
+			label: this.filter_label_cache[filter_name]?.[value] || value,
+		}));
+
+		const merged = [...selected_options, ...processed].filter((option) => option.value);
+		const unique = [];
+		const seen = new Set();
+		merged.forEach((option) => {
+			if (seen.has(option.value)) {
+				return;
+			}
+			seen.add(option.value);
+			this.filter_label_cache[filter_name][option.value] = option.label || option.value;
+			unique.push(option);
+		});
+		return unique;
+	}
+
+	load_filter_options(filter_name, search_text = "") {
+		const definition = this.filter_definitions[filter_name];
+		if (!definition?.get_data) {
+			this.filter_options[filter_name] = [];
+			this.render_filter_pickers();
+			return Promise.resolve();
+		}
+
+		const request_id = (this.filter_request_ids[filter_name] || 0) + 1;
+		this.filter_request_ids[filter_name] = request_id;
+
+		return Promise.resolve(definition.get_data(search_text)).then((options) => {
+			if (this.filter_request_ids[filter_name] !== request_id) {
+				return;
+			}
+			this.filter_options[filter_name] = this.process_filter_options(filter_name, options);
+			this.sync_filter_picker(filter_name);
+		});
+	}
+
+	sync_filter_picker(filter_name) {
+		const widget = this.$layout.find(`.aster-filter-picker[data-filter="${filter_name}"]`);
+		if (!widget.length) {
+			this.render_filter_pickers();
+			return;
+		}
+
+		const is_open = this.open_filter_picker === filter_name;
+		const applied_values = this.get_filter_values(filter_name);
+		const draft_values = is_open ? this.get_filter_draft_values(filter_name) : applied_values;
+		const summary = this.get_filter_summary(filter_name, applied_values);
+		const selected_count = applied_values.length;
+		const definition = this.filter_definitions[filter_name];
+		const options = this.filter_options[filter_name] || [];
+
+		widget.toggleClass("is-open", is_open);
+		widget.find(".aster-filter-picker__trigger").attr("aria-expanded", is_open ? "true" : "false");
+		widget.find(".aster-filter-picker__menu").attr("aria-hidden", is_open ? "false" : "true");
+		widget
+			.find(".aster-filter-picker__trigger-text")
+			.text(summary || definition.placeholder || "");
+		widget
+			.find(".aster-filter-picker__caret")
+			.html(frappe.utils.icon(is_open ? "chevron-up" : "chevron-down", "xs"));
+
+		const options_markup = options.length
+			? options
+					.map((option) => {
+						const is_checked = draft_values.includes(option.value);
+						return `
+							<label class="aster-filter-picker__option">
+								<input
+									type="checkbox"
+									class="aster-filter-picker__checkbox"
+									value="${frappe.utils.escape_html(option.value)}"
+									${is_checked ? "checked" : ""}
+								/>
+								<span>${frappe.utils.escape_html(option.label || option.value)}</span>
+							</label>
+						`;
+					})
+					.join("")
+			: `<div class="aster-filter-picker__empty">${__("No options found")}</div>`;
+		widget.find(".aster-filter-picker__options").html(options_markup);
+		widget.find(".aster-filter-picker__search-input").val(this.filter_search[filter_name] || "");
+
+		const count = widget.find(".aster-filter-picker__count");
+		if (selected_count) {
+			if (count.length) {
+				count.text(selected_count);
+			} else {
+				widget
+					.find(".aster-filter-picker__trigger-meta")
+					.prepend(`<span class="aster-filter-picker__count">${selected_count}</span>`);
+			}
+		} else {
+			count.remove();
+		}
+	}
+
+	toggle_filter_picker(filter_name) {
+		if (this.open_filter_picker === filter_name) {
+			this.close_filter_picker();
+			return;
+		}
+
+		this.open_filter_picker = filter_name;
+		this.filter_drafts[filter_name] = [...this.get_filter_values(filter_name)];
+		this.filter_search[filter_name] = "";
+		this.render_filter_pickers();
+		this.load_filter_options(filter_name, "").then(() => {
+			this.$layout.find(`.aster-filter-picker[data-filter="${filter_name}"] .aster-filter-picker__search-input`).trigger("focus");
+		});
+	}
+
+	close_filter_picker() {
+		if (!this.open_filter_picker) {
+			return;
+		}
+
+		const filter_name = this.open_filter_picker;
+		this.filter_drafts[filter_name] = [...this.get_filter_values(filter_name)];
+		this.filter_search[filter_name] = "";
+		this.open_filter_picker = null;
+		this.render_filter_pickers();
+	}
+
+	apply_filter_picker(filter_name) {
+		this.filter_values[filter_name] = [...this.get_filter_draft_values(filter_name)];
+		this.open_filter_picker = null;
+		this.filter_search[filter_name] = "";
+		this.render_filter_pickers();
+		this.refresh();
+	}
+
+	reset_filter_picker(filter_name) {
+		this.filter_drafts[filter_name] = [];
+		this.filter_search[filter_name] = "";
+		this.load_filter_options(filter_name, "");
+	}
+
+	toggle_filter_draft_value(filter_name, value, is_checked) {
+		const next_values = [...this.get_filter_draft_values(filter_name)];
+		if (is_checked) {
+			if (!next_values.includes(value)) {
+				next_values.push(value);
+			}
+		} else {
+			const index = next_values.indexOf(value);
+			if (index > -1) {
+				next_values.splice(index, 1);
+			}
+		}
+		this.filter_drafts[filter_name] = next_values;
+		this.sync_filter_picker(filter_name);
 	}
 
 	bind_actions() {
@@ -169,6 +494,60 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 		this.$layout.on("click", ".aster-studio-refresh", () => this.refresh());
 		this.$layout.on("click", ".aster-studio-open-list", () => frappe.set_route("List", "Planning Card"));
+		this.$layout.on("click", ".aster-filter-picker__trigger", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			const filter_name = $(event.currentTarget).closest(".aster-filter-picker").data("filter");
+			if (filter_name) {
+				this.toggle_filter_picker(filter_name);
+			}
+		});
+		this.$layout.on("click", ".aster-filter-picker__menu", (event) => {
+			event.stopPropagation();
+		});
+		this.$layout.on(
+			"input",
+			".aster-filter-picker__search-input",
+			frappe.utils.debounce((event) => {
+				const $input = $(event.currentTarget);
+				const filter_name = $input.closest(".aster-filter-picker").data("filter");
+				if (!filter_name) {
+					return;
+				}
+				this.filter_search[filter_name] = $input.val() || "";
+				this.load_filter_options(filter_name, this.filter_search[filter_name]);
+			}, 200)
+		);
+		this.$layout.on("change", ".aster-filter-picker__checkbox", (event) => {
+			const $checkbox = $(event.currentTarget);
+			const filter_name = $checkbox.closest(".aster-filter-picker").data("filter");
+			if (!filter_name) {
+				return;
+			}
+			this.toggle_filter_draft_value(filter_name, $checkbox.val(), $checkbox.is(":checked"));
+		});
+		this.$layout.on("click", ".aster-filter-picker__reset", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			const filter_name = $(event.currentTarget).closest(".aster-filter-picker").data("filter");
+			if (filter_name) {
+				this.reset_filter_picker(filter_name);
+			}
+		});
+		this.$layout.on("click", ".aster-filter-picker__apply", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			const filter_name = $(event.currentTarget).closest(".aster-filter-picker").data("filter");
+			if (filter_name) {
+				this.apply_filter_picker(filter_name);
+			}
+		});
+		this.$layout.on("keydown", ".aster-filter-picker", (event) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				this.close_filter_picker();
+			}
+		});
 
 		this.$layout.on("click", ".aster-studio-week-pill", (event) => {
 			const $pill = $(event.currentTarget);
@@ -217,6 +596,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			if (date) {
 				this.open_create_dialog(moment(date).hour(8).minute(0).second(0));
 			}
+		});
+
+		this.$layout.on("mousedown", ".aster-studio-horizon-cell", (event) => {
+			if ($(event.target).closest(".aster-studio-day__create").length) {
+				return;
+			}
+			this.start_card_create_interaction(event);
 		});
 
 		this.$layout.on("click", ".aster-studio-card__open", (event) => {
@@ -377,12 +763,19 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		});
 
 		$(document).on("mousemove.asterPlanningStudio", (event) => {
+			this.handle_card_create_interaction_move(event);
 			this.handle_card_resize_interaction_move(event);
 			this.handle_assignment_interaction_move(event);
 		});
 		$(document).on("mouseup.asterPlanningStudio", () => {
+			this.finish_card_create_interaction();
 			this.finish_card_resize_interaction();
 			this.finish_assignment_interaction();
+		});
+		$(document).on("mousedown.asterPlanningStudio", (event) => {
+			if (!$(event.target).closest(".aster-filter-picker").length) {
+				this.close_filter_picker();
+			}
 		});
 	}
 
@@ -397,11 +790,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		frappe.call({
 			method:
 				"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.get_planning_dashboard_data",
-			args: {
-				start_date: this.to_system_datetime(horizon_window.start),
-				end_date: this.to_system_datetime(horizon_window.end),
-				activity_types: this.get_selected_activity_types(),
-			},
+				args: {
+					start_date: this.to_system_datetime(horizon_window.start),
+					end_date: this.to_system_datetime(horizon_window.end),
+					projects: this.get_selected_projects(),
+					task_types: this.get_selected_task_types(),
+					operations: this.get_selected_operations(),
+				},
 			callback: (response) => {
 				if (request_id !== this.request_id) {
 					return;
@@ -603,6 +998,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		const horizon_window = this.get_horizon_window();
 		const days = this.build_horizon_days(horizon_window);
 		const segments = this.build_horizon_card_segments(horizon_window);
+		this.horizon_days = days;
+		this.horizon_segments = segments;
 
 		this.$horizon.html(`
 			<div class="aster-studio-horizon aster-studio-horizon--continuous">
@@ -622,12 +1019,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 									: `<div class="aster-studio-horizon__empty-note">${__("Create or drag planning cards into this planning grid.")}</div>`
 							}
 						</div>
+						<div class="aster-studio-horizon__create-preview" aria-hidden="true"></div>
 					</div>
 				</div>
 			</div>
 		`);
 
 		this.center_active_week_in_horizon();
+		if (this.card_create_interaction) {
+			this.apply_card_create_preview(this.card_create_interaction);
+		}
 	}
 
 	build_horizon_days(horizon_window = this.get_horizon_window()) {
@@ -936,11 +1337,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		this.active_card_name = card.name;
-		this.card_detail = null;
-		this.$drawer.addClass("is-open");
-		this.render_card_detail_loading(card);
-		this.load_card_detail(card.name);
+		this.close_card_detail();
+		this.open_edit_dialog(card);
 	}
 
 	close_card_detail() {
@@ -955,12 +1353,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		frappe.call({
 			method:
 				"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.get_planning_card_detail",
-			args: {
-				name,
-				activity_types: this.get_selected_activity_types(),
-				range_start: activeRange.start,
-				range_end: activeRange.end,
-			},
+				args: {
+					name,
+					range_start: activeRange.start,
+					range_end: activeRange.end,
+				},
 			callback: (response) => {
 				if (request_id !== this.detail_request_id || this.active_card_name !== name) {
 					return;
@@ -1040,7 +1437,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				</div>
 				<div class="aster-studio-drawer__stat">
 					<div class="aster-studio-drawer__stat-label">${__("Daily per Employee")}</div>
-					<div class="aster-studio-drawer__stat-value">${this.format_hours_with_unit(card.hours_per_employee_per_day || 8)}</div>
+					<div class="aster-studio-drawer__stat-value">${this.format_hours_with_unit(
+						card.hours_per_employee_per_day || this.get_default_total_daily_hours(this.get_card_planned_employee_count(card))
+					)}</div>
 				</div>
 				<div class="aster-studio-drawer__stat">
 					<div class="aster-studio-drawer__stat-label">${__("Assigned")}</div>
@@ -1132,7 +1531,18 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		const card = this.card_detail.card;
+		this.toggle_card_assignment_for_detail(this.card_detail, employee, () => {
+			this.refresh();
+			this.load_card_detail(this.card_detail.card.name);
+		});
+	}
+
+	toggle_card_assignment_for_detail(cardDetail, employee, onSuccess) {
+		if (!cardDetail?.card) {
+			return;
+		}
+
+		const card = cardDetail.card;
 		const range = this.get_assignment_range(card);
 		if (!range) {
 			frappe.msgprint(__("The active week does not overlap with this Planning Card."));
@@ -1167,8 +1577,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				},
 				callback: () => {
 					frappe.show_alert({ message: __("Assignments updated"), indicator: "green" });
-					this.refresh();
-					this.load_card_detail(card.name);
+					if (onSuccess) {
+						onSuccess();
+					}
 				},
 			});
 		};
@@ -1184,6 +1595,149 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		}
 
 		submit(0);
+	}
+
+	load_card_detail_into_dialog(dialog, name) {
+		const requestId = `${name}:${Date.now()}`;
+		dialog.__card_detail_request_id = requestId;
+		this.render_card_dialog_employee_panel_loading(dialog);
+
+		frappe.call({
+			method:
+				"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.get_planning_card_detail",
+				args: {
+					name,
+					range_start: this.get_active_detail_range().start,
+					range_end: this.get_active_detail_range().end,
+				},
+			callback: (response) => {
+				if (dialog.__card_detail_request_id !== requestId) {
+					return;
+				}
+
+				dialog.__card_detail = response.message || null;
+				this.render_card_dialog_employee_panel(dialog);
+			},
+		});
+	}
+
+	render_card_dialog_employee_panel_loading(dialog) {
+		const field = dialog.get_field("employee_availability_html");
+		if (!field?.$wrapper) {
+			return;
+		}
+
+		field.$wrapper.html(`
+			<div class="aster-studio-dialog-panel">
+				<div class="aster-studio-dialog-panel__loading">${__("Loading employee availability...")}</div>
+			</div>
+		`);
+	}
+
+	render_card_dialog_employee_panel(dialog) {
+		const field = dialog.get_field("employee_availability_html");
+		const detail = dialog.__card_detail;
+		if (!field?.$wrapper || !detail?.card) {
+			return;
+		}
+
+		const card = detail.card;
+		const employees = detail.employees || [];
+		const hasActiveWeek = Boolean(this.active_week?.start && this.active_week?.end);
+		const assignmentHint = hasActiveWeek
+			? __("Assignments from this popup are stored with this week as their From/To period.")
+			: __("No week is active. Assignments will cover the full Planning Card period.");
+
+		field.$wrapper.html(`
+			<div class="aster-studio-dialog-panel">
+				<div class="aster-studio-dialog-panel__head">
+					<h4>${__("Available Employees")}</h4>
+					<p>${assignmentHint}</p>
+					<p>${__("Assignment buttons save immediately and refresh the planning card.")}</p>
+				</div>
+				<div class="aster-studio-dialog-panel__list">
+					${
+						employees.length
+							? `
+								<div class="aster-studio__dialog-capacity-table">
+									<div class="aster-studio__dialog-capacity-row is-head">
+										<div>${__("Employee")}</div>
+										<div>${__("Adjusted Capacity")}</div>
+										<div>${__("Planned Hours")}</div>
+										<div>${__("Open Capacity")}</div>
+										<div>${__("Action")}</div>
+									</div>
+									${employees.map((employee) => this.get_dialog_employee_markup(employee)).join("")}
+								</div>
+							`
+							: `<div class="aster-studio__empty">${__("No employee capacity found for this period.")}</div>`
+					}
+				</div>
+			</div>
+		`);
+
+		field.$wrapper
+			.off("click.asterDialogAssign")
+			.on("click.asterDialogAssign", ".aster-studio-employee__assign", (event) => {
+				const employee = $(event.currentTarget).data("employee");
+				if (!employee) {
+					return;
+				}
+
+				this.toggle_card_assignment_for_detail(detail, employee, () => {
+					this.refresh();
+					this.load_card_detail_into_dialog(dialog, card.name);
+				});
+			});
+	}
+
+	get_dialog_employee_markup(employee) {
+		const assignmentWindows = employee.card_assignment_windows || [];
+		const plannedHours = flt(employee.assigned_hours || 0);
+		const openCapacity = flt(employee.capacity_hours || 0) - plannedHours;
+		const openCapacityClass = openCapacity < 0 ? "is-negative" : "";
+		const assignStateClass = employee.is_assigned_to_card ? "is-remove" : "is-assign";
+		const assignmentMarkup = assignmentWindows.length
+			? assignmentWindows
+					.map((row) => {
+						const fromDate = row.from_date ? moment(row.from_date, "YYYY-MM-DD").format("DD.MM") : "–";
+						const toDate = row.to_date ? moment(row.to_date, "YYYY-MM-DD").format("DD.MM") : "–";
+						return `<span class="aster-studio-employee__badge">${frappe.utils.escape_html(
+							`${fromDate} - ${toDate} · ${this.format_hours_with_unit(row.window_hours || row.allocated_hours)}`
+						)}</span>`;
+					})
+					.join("")
+			: `<span class="aster-studio-employee__badge is-muted">${__("No assignment in this window")}</span>`;
+		const assignLabel = employee.is_assigned_to_card
+			? __("Remove")
+			: this.active_week?.start
+				? __("Assign Week")
+				: __("Assign");
+
+		return `
+			<div class="aster-studio__dialog-capacity-row ${employee.is_assigned_to_card ? "is-assigned" : ""}">
+				<div class="aster-studio__dialog-capacity-name">
+					<div class="aster-studio__capacity-table-name">${frappe.utils.escape_html(employee.employee_name || "")}</div>
+					<div class="aster-studio__dialog-capacity-meta">
+						<span>${employee.is_assigned_to_card ? __("Assigned in the current window") : __("Not assigned in the current window")}</span>
+						<span>${__("{0} other planning cards", [cint(employee.assigned_project_count)])}</span>
+					</div>
+					<div class="aster-studio__dialog-capacity-badges">${assignmentMarkup}</div>
+				</div>
+				<div class="aster-studio__capacity-table-value">${this.format_hours_with_unit(employee.capacity_hours)}</div>
+				<div class="aster-studio__capacity-table-value">${this.format_hours_with_unit(plannedHours)}</div>
+				<div class="aster-studio__capacity-table-value ${openCapacityClass}">${this.format_hours_with_unit(openCapacity)}</div>
+				<div class="aster-studio__dialog-capacity-action">
+					<button
+						type="button"
+						class="btn btn-xs aster-studio-employee__assign ${assignStateClass}"
+						data-employee="${frappe.utils.escape_html(employee.employee || "")}"
+					>
+						${assignLabel}
+					</button>
+				</div>
+			</div>
+		`;
 	}
 
 	get_active_detail_range() {
@@ -1224,28 +1778,251 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		};
 	}
 
-	open_create_dialog(default_start) {
-		this.open_card_dialog({ default_start });
+	open_create_dialog(default_start, default_end = null) {
+		this.open_card_dialog({ default_start, default_end });
 	}
 
 	open_edit_dialog(card) {
 		this.open_card_dialog({ card });
 	}
 
-	open_card_dialog({ card = null, default_start = null } = {}) {
+	get_default_employee_hours_per_day() {
+		return flt(this.state.planning_settings?.default_hours_per_employee_per_day || 8, 2) || 8;
+	}
+
+	get_default_unassigned_hours_per_day() {
+		return flt(this.state.planning_settings?.default_hours_per_day_without_employees || 8, 2) || 8;
+	}
+
+	get_default_total_daily_hours(plannedEmployeeCount) {
+		const plannedCount = Math.max(cint(plannedEmployeeCount || 0), 0);
+		if (plannedCount > 0) {
+			return flt(plannedCount * this.get_default_employee_hours_per_day(), 2);
+		}
+
+		return flt(this.get_default_unassigned_hours_per_day(), 2);
+	}
+
+	parse_user_date(value) {
+		if (!value) {
+			return null;
+		}
+
+		if (moment.isMoment(value)) {
+			return value.clone();
+		}
+
+		const parsed = moment(String(value).trim(), [frappe.defaultDateFormat, "YYYY-MM-DD", frappe.defaultDatetimeFormat], true);
+		if (parsed.isValid()) {
+			return parsed;
+		}
+
+		const fallback = moment(value);
+		return fallback.isValid() ? fallback : null;
+	}
+
+	count_planning_days(startMoment, endMoment) {
+		if (!startMoment || !endMoment) {
+			return 0;
+		}
+
+		const cursor = startMoment.clone().startOf("day");
+		const lastDay = endMoment.clone().startOf("day");
+		if (cursor.isAfter(lastDay, "day")) {
+			return 0;
+		}
+
+		const excludeWeekends = this.should_exclude_planning_weekends();
+		let plannedDays = 0;
+		while (!cursor.isAfter(lastDay, "day")) {
+			if (!excludeWeekends || cursor.isoWeekday() < 6) {
+				plannedDays += 1;
+			}
+			cursor.add(1, "day");
+		}
+
+		return plannedDays;
+	}
+
+	get_last_planned_day_moment(startMoment, plannedDays) {
+		const cursor = startMoment.clone().startOf("day");
+		const excludeWeekends = this.should_exclude_planning_weekends();
+		let remainingDays = Math.max(cint(plannedDays || 0), 1);
+
+		while (true) {
+			if (!excludeWeekends || cursor.isoWeekday() < 6) {
+				remainingDays -= 1;
+				if (remainingDays <= 0) {
+					return cursor.clone();
+				}
+			}
+
+			cursor.add(1, "day");
+		}
+	}
+
+	get_card_planned_employee_count(card, assignedEmployees = []) {
+		const assignedCount = cint(card?.assigned_employee_count || assignedEmployees.length || 0);
+		const hasStoredCount = card?.planned_employee_count !== undefined && card?.planned_employee_count !== null && card?.planned_employee_count !== "";
+		if (hasStoredCount) {
+			const storedCount = Math.max(cint(card?.planned_employee_count || 0), 0);
+			if (storedCount > 0 || assignedCount <= 0) {
+				return storedCount;
+			}
+		}
+
+		if (assignedCount > 0) {
+			return assignedCount;
+		}
+
+		const defaultEmployeeHours = this.get_default_employee_hours_per_day();
+		if (defaultEmployeeHours <= 0) {
+			return 0;
+		}
+
+		const inferredCount = Math.round(flt(card?.hours_per_employee_per_day || 0) / defaultEmployeeHours) || 0;
+		return Math.max(inferredCount, 0);
+	}
+
+	get_card_daily_team_hours(card, plannedEmployeeCount) {
+		if (!card) {
+			return this.get_default_total_daily_hours(plannedEmployeeCount);
+		}
+
+		return flt(card.hours_per_employee_per_day || 0, 2) || this.get_default_total_daily_hours(plannedEmployeeCount);
+	}
+
+	sync_card_dialog_daily_hours(dialog) {
+		if (dialog.__syncing_planned_employee_hours) {
+			return Promise.resolve();
+		}
+
+		const plannedEmployeeCount = Math.max(cint(dialog.get_value("planned_employee_count") || 0), 0);
+		const totalDailyHours = this.get_default_total_daily_hours(plannedEmployeeCount);
+		const currentEmployeeCount = cint(dialog.get_value("planned_employee_count") || 0);
+		const currentDailyHours = flt(dialog.get_value("hours_per_employee_per_day") || 0);
+		const shouldUpdateEmployeeCount = currentEmployeeCount !== plannedEmployeeCount;
+		const shouldUpdateDailyHours = currentDailyHours !== totalDailyHours;
+		if (!shouldUpdateEmployeeCount && !shouldUpdateDailyHours) {
+			return Promise.resolve();
+		}
+
+		dialog.__syncing_planned_employee_hours = true;
+		if (shouldUpdateEmployeeCount) {
+			dialog.set_value("planned_employee_count", plannedEmployeeCount);
+		}
+
+		if (shouldUpdateDailyHours) {
+			dialog.set_value("hours_per_employee_per_day", totalDailyHours);
+		}
+
+		return new Promise((resolve) => {
+			setTimeout(resolve, 0);
+		}).finally(() => {
+			dialog.__syncing_planned_employee_hours = false;
+		});
+	}
+
+	set_dialog_value_silently(dialog, fieldname, value, flagName) {
+		dialog[flagName] = true;
+		dialog.set_value(fieldname, value);
+		setTimeout(() => {
+			dialog[flagName] = false;
+		}, 0);
+	}
+
+	sync_card_dialog_schedule(dialog, source = "required_hours") {
+		if (dialog.__syncing_card_schedule) {
+			return;
+		}
+
+		const startDate = this.parse_user_date(dialog.get_value("start_date"));
+		if (!startDate) {
+			return;
+		}
+
+		const totalDailyHours = flt(dialog.get_value("hours_per_employee_per_day") || 0, 2);
+		if (totalDailyHours <= 0) {
+			return;
+		}
+
+		dialog.__syncing_card_schedule = true;
+		try {
+			if (source === "end_date") {
+				let endDate = this.parse_user_date(dialog.get_value("end_date")) || startDate.clone();
+				if (endDate.isBefore(startDate, "day")) {
+					endDate = startDate.clone();
+					this.set_dialog_value_silently(
+						dialog,
+						"end_date",
+						endDate.format(frappe.defaultDateFormat),
+						"__suppress_end_date_onchange"
+					);
+				}
+
+				const plannedDays = Math.max(this.count_planning_days(startDate, endDate), 1);
+				const requiredHours = flt(plannedDays * totalDailyHours, 2);
+				if (flt(dialog.get_value("required_hours") || 0, 2) !== requiredHours) {
+					this.set_dialog_value_silently(
+						dialog,
+						"required_hours",
+						requiredHours,
+						"__suppress_required_hours_onchange"
+					);
+				}
+				return;
+			}
+
+			const requiredHours = flt(dialog.get_value("required_hours") || 0, 2);
+			if (requiredHours <= 0) {
+				return;
+			}
+
+			const plannedDays = Math.max(Math.ceil(requiredHours / totalDailyHours), 1);
+			const endDate = this.get_last_planned_day_moment(startDate, plannedDays);
+			const endDateText = endDate.format(frappe.defaultDateFormat);
+			if (dialog.get_value("end_date") !== endDateText) {
+				this.set_dialog_value_silently(
+					dialog,
+					"end_date",
+					endDateText,
+					"__suppress_end_date_onchange"
+				);
+			}
+		} finally {
+			dialog.__syncing_card_schedule = false;
+		}
+	}
+
+	open_card_dialog({ card = null, default_start = null, default_end = null } = {}) {
 		const is_edit = Boolean(card);
-		const start = (card ? this.to_user_moment(card.start_date) : default_start || this.get_horizon_window().start.clone().hour(8).minute(0).second(0)).clone();
+		const start = (
+			card
+				? this.to_user_moment(card.start_date)
+				: default_start || this.get_horizon_window().start.clone().startOf("day")
+		).clone();
+		const end = card
+			? this.to_user_moment(card.end_date).clone()
+			: (default_end || default_start || this.get_horizon_window().start.clone().startOf("day")).clone();
 		const assignedEmployees = (card?.assigned_employees || []).map((row) => row.employee).filter(Boolean);
+		const plannedEmployeeCount = this.get_card_planned_employee_count(card, assignedEmployees);
+		const dailyTeamHours = this.get_card_daily_team_hours(card, plannedEmployeeCount);
 		const dialog = new frappe.ui.Dialog({
 			title: is_edit ? __("Update Planning Card") : __("New Planning Card"),
 			fields: [
+				{
+					fieldtype: "Section Break",
+				},
 				{
 					fieldname: "project",
 					fieldtype: "Link",
 					label: __("Project"),
 					options: "Project",
-					reqd: 1,
 					default: card?.project,
+					get_query: () => this.get_open_project_query(),
+				},
+				{
+					fieldtype: "Column Break",
 				},
 				{
 					fieldname: "elementgruppe",
@@ -1254,14 +2031,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					default: card?.elementgruppe,
 				},
 				{
-					fieldname: "operation",
-					fieldtype: "Link",
-					label: __("Operation"),
-					options: "Operation",
-					default: card?.operation,
-					onchange: () => {
-						this.load_operation_defaults(dialog);
-					},
+					fieldtype: "Section Break",
 				},
 				{
 					fieldname: "task_type",
@@ -1275,28 +2045,107 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					},
 				},
 				{
+					fieldtype: "Column Break",
+				},
+				{
+					fieldname: "operation",
+					fieldtype: "Link",
+					label: __("Operation"),
+					options: "Operation",
+					default: card?.operation,
+					onchange: () => {
+						this.load_operation_defaults(dialog);
+					},
+				},
+				{
+					fieldtype: "Section Break",
+				},
+				{
 					fieldname: "start_date",
-					fieldtype: "Datetime",
+					fieldtype: "Date",
 					label: __("Start Date"),
 					reqd: 1,
-					default: start.format(frappe.defaultDatetimeFormat),
+					default: start.format(frappe.defaultDateFormat),
+					onchange: () => {
+						this.sync_card_dialog_schedule(dialog, dialog.__schedule_mode || "required_hours");
+					},
+				},
+				{
+					fieldtype: "Column Break",
+				},
+				{
+					fieldname: "end_date",
+					fieldtype: "Date",
+					label: __("End Date"),
+					reqd: 1,
+					default: end.format(frappe.defaultDateFormat),
+					onchange: () => {
+						if (dialog.__suppress_end_date_onchange) {
+							return;
+						}
+						if (dialog.__syncing_card_schedule) {
+							return;
+						}
+						dialog.__schedule_mode = "end_date";
+						this.sync_card_dialog_schedule(dialog, "end_date");
+					},
+				},
+				{
+					fieldtype: "Section Break",
 				},
 				{
 					fieldname: "required_hours",
 					fieldtype: "Float",
 					label: __("Required Hours"),
-					description: __("If empty, the operation time is used."),
 					default: flt(card?.required_hours || card?.duration_in_hours || 0),
 					onchange: () => {
+						if (dialog.__suppress_required_hours_onchange) {
+							return;
+						}
+						if (dialog.__syncing_card_schedule) {
+							return;
+						}
 						dialog.__required_hours_touched = true;
+						dialog.__schedule_mode = "required_hours";
+						this.sync_card_dialog_schedule(dialog, "required_hours");
 					},
+				},
+				{
+					fieldtype: "Column Break",
+				},
+				{
+					fieldname: "planned_employee_count",
+					fieldtype: "Int",
+					label: __("Employees on Card"),
+					default: plannedEmployeeCount,
+					onchange: () => {
+						if (dialog.__syncing_planned_employee_hours) {
+							return;
+						}
+						dialog.__employee_count_touched = true;
+						const fixedRequiredHours = flt(dialog.get_value("required_hours") || 0, 2);
+						dialog.__schedule_mode = "required_hours";
+						this.sync_card_dialog_daily_hours(dialog).then(() => {
+							if (flt(dialog.get_value("required_hours") || 0, 2) !== fixedRequiredHours) {
+								dialog.set_value("required_hours", fixedRequiredHours);
+							}
+							this.sync_card_dialog_schedule(dialog, "required_hours");
+						});
+					},
+				},
+				{
+					fieldtype: "Column Break",
 				},
 				{
 					fieldname: "hours_per_employee_per_day",
 					fieldtype: "Float",
-					label: __("Calculated Hours per Employee per Day"),
+					label: __("Calculated Hours per Day"),
 					reqd: 1,
-					default: flt(card?.hours_per_employee_per_day || 8),
+					read_only: 1,
+					default: dailyTeamHours,
+				},
+				{
+					fieldtype: "Section Break",
 				},
 				{
 					fieldname: "assigned_employees",
@@ -1313,6 +2162,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					label: __("Note"),
 					default: card?.note,
 				},
+				{
+					fieldtype: "Section Break",
+				},
+				{
+					fieldname: "employee_availability_html",
+					fieldtype: "HTML",
+				},
 			],
 			primary_action_label: is_edit ? __("Save") : __("Create"),
 			primary_action: () => {
@@ -1322,65 +2178,123 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				}
 
 				const normalizedEmployees = this.normalize_employee_values(values.assigned_employees);
-				const requiredHours = flt(values.required_hours || 0);
+				const startDate = this.parse_user_date(values.start_date);
+				if (!startDate) {
+					frappe.msgprint(__("Start Date is required."));
+					return;
+				}
+
+				let endDate = this.parse_user_date(values.end_date) || startDate.clone();
+				if (endDate.isBefore(startDate, "day")) {
+					endDate = startDate.clone();
+				}
+
+				const plannedEmployees = Math.max(cint(values.planned_employee_count || 0), 0);
+				const dailyHours = flt(values.hours_per_employee_per_day || 0, 2) || this.get_default_total_daily_hours(plannedEmployees);
+				let requiredHours = flt(values.required_hours || 0, 2);
+				if (dialog.__schedule_mode === "end_date") {
+					const plannedDays = Math.max(this.count_planning_days(startDate, endDate), 1);
+					requiredHours = flt(plannedDays * dailyHours, 2);
+				} else {
+					const plannedDays = Math.max(Math.ceil(requiredHours / dailyHours), 1);
+					endDate = this.get_last_planned_day_moment(startDate, plannedDays);
+				}
 				if (requiredHours <= 0) {
 					frappe.msgprint(__("Required Hours must be greater than zero."));
 					return;
 				}
 
-				if (flt(values.hours_per_employee_per_day) <= 0) {
-					frappe.msgprint(__("Calculated Hours per Employee per Day must be greater than zero."));
+				if (dailyHours <= 0) {
+					frappe.msgprint(__("Calculated Hours per Day must be greater than zero."));
 					return;
 				}
 
-				const submit = (adjustEndDateForParallelWork) => {
-					frappe.call({
-						method: is_edit
-							? "aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.update_planning_card"
-							: "aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.create_planning_card",
-						args: {
-							name: card?.name,
-							project: values.project,
-							elementgruppe: values.elementgruppe,
-							operation: values.operation,
-							task_type: values.task_type,
-							start_date: this.to_system_datetime(moment(values.start_date, frappe.defaultDatetimeFormat)),
-							required_hours: requiredHours,
-							hours_per_employee_per_day: values.hours_per_employee_per_day,
-							assigned_employees: normalizedEmployees,
-							adjust_end_date_for_parallel_work: adjustEndDateForParallelWork,
-							note: values.note,
-						},
-						callback: () => {
-							dialog.hide();
-							frappe.show_alert({
-								message: is_edit ? __("Planning Card updated") : __("Planning Card created"),
-								indicator: "green",
-							});
-							this.refresh();
-						},
-					});
+				const args = {
+					name: card?.name,
+					project: values.project,
+					elementgruppe: values.elementgruppe,
+					operation: values.operation,
+					task_type: values.task_type,
+					start_date: this.to_system_day_start(startDate),
+					required_hours: requiredHours,
+					planned_employee_count: plannedEmployees,
+					hours_per_employee_per_day: dailyHours,
+					assigned_employees: normalizedEmployees,
+					adjust_end_date_for_parallel_work: 0,
+					note: values.note,
 				};
-
-				if (normalizedEmployees.length > 1) {
-					frappe.confirm(
-						__("Several employees are assigned. Should the end date be shortened for parallel work?"),
-						() => submit(1),
-						() => submit(0)
-					);
-					return;
+				if (dialog.__schedule_mode === "end_date") {
+					args.end_date = this.to_system_day_end(endDate);
 				}
 
-				submit(0);
+				frappe.call({
+					method: is_edit
+						? "aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.update_planning_card"
+						: "aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.create_planning_card",
+					args,
+					callback: () => {
+						dialog.hide();
+						frappe.show_alert({
+							message: is_edit ? __("Planning Card updated") : __("Planning Card created"),
+							indicator: "green",
+						});
+						this.refresh();
+					},
+				});
 			},
 		});
 
 		dialog.__required_hours_touched = is_edit;
 		dialog.__task_type_touched = is_edit;
+		dialog.__employee_count_touched = is_edit;
+		dialog.__schedule_mode = !is_edit && default_end ? "end_date" : "required_hours";
 		dialog.show();
+		dialog.$wrapper.addClass("aster-planning-card-dialog");
+		dialog.get_field("required_hours")?.$wrapper?.addClass("aster-planning-card-dialog__required-hours");
+
+		if (is_edit && card?.name) {
+			dialog.set_secondary_action_label(__("Delete"));
+			dialog.set_secondary_action(() => {
+				frappe.confirm(
+					__("Delete Planning Card {0}? All employee assignments on this card will be removed as well.", [card.name]),
+					() => {
+						frappe.call({
+							method:
+								"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.delete_planning_card",
+							args: {
+								name: card.name,
+							},
+							callback: () => {
+								dialog.hide();
+								if (this.active_card_name === card.name) {
+									this.close_card_detail();
+								}
+								frappe.show_alert({
+									message: __("Planning Card deleted"),
+									indicator: "green",
+								});
+								this.refresh();
+							},
+						});
+					}
+				);
+			});
+			dialog.get_secondary_btn().addClass("btn-danger").removeClass("btn-default");
+		}
 
 		if (!is_edit && !flt(dialog.get_value("required_hours")) && dialog.get_value("operation")) {
 			this.load_operation_defaults(dialog);
+		}
+
+		if (is_edit && card?.name) {
+			setTimeout(() => {
+				this.load_card_detail_into_dialog(dialog, card.name);
+			}, 0);
+		} else {
+			this.sync_card_dialog_daily_hours(dialog).then(() => {
+				this.sync_card_dialog_schedule(dialog, dialog.__schedule_mode);
+			});
+			dialog.get_field("employee_availability_html").$wrapper.empty();
 		}
 	}
 
@@ -1412,6 +2326,14 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return {
 			filters: {
 				custom_use_for_production_planning: 1,
+			},
+		};
+	}
+
+	get_open_project_query() {
+		return {
+			filters: {
+				status: "Open",
 			},
 		};
 	}
@@ -1467,6 +2389,141 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				this.refresh();
 			},
 		});
+	}
+
+	start_card_create_interaction(event) {
+		if (event.which && event.which !== 1) {
+			return;
+		}
+		if (this.card_resize_interaction || this.assignment_interaction) {
+			return;
+		}
+
+		const $cell = $(event.currentTarget);
+		const date = $cell.data("date");
+		if (!date) {
+			return;
+		}
+
+		const startDate = moment(date, "YYYY-MM-DD", true);
+		if (!startDate.isValid()) {
+			return;
+		}
+
+		event.preventDefault();
+		this.card_create_interaction = {
+			start_date: startDate.clone(),
+			end_date: startDate.clone(),
+			anchor_date: startDate.clone(),
+			lane_index: this.get_horizon_lane_from_client_y(event.clientY),
+			did_drag: false,
+		};
+		this.apply_card_create_preview(this.card_create_interaction);
+	}
+
+	get_horizon_date_from_client_x(clientX) {
+		const body = this.$horizon.find(".aster-studio-horizon__body--continuous").get(0);
+		if (!body || !this.horizon_days.length) {
+			return null;
+		}
+
+		const rect = body.getBoundingClientRect();
+		const rawIndex = Math.floor((clientX - rect.left) / this.day_width);
+		const dayIndex = Math.max(Math.min(rawIndex, this.horizon_days.length - 1), 0);
+		const day = this.horizon_days[dayIndex];
+		return day?.date ? day.date.clone() : null;
+	}
+
+	get_horizon_lane_from_client_y(clientY) {
+		const body = this.$horizon.find(".aster-studio-horizon__body--continuous").get(0);
+		const laneHeight = Math.max(cint(this.horizon_segments?.lane_height || 74), 1);
+		const laneCount = Math.max(cint(this.horizon_segments?.lane_count || 1), 1);
+		if (!body) {
+			return 0;
+		}
+
+		const previewStartOffset = 36;
+		const laneGap = 12;
+		const rect = body.getBoundingClientRect();
+		const relativeY = clientY - rect.top - previewStartOffset;
+		const laneSpan = laneHeight + laneGap;
+		const rawLane = Math.floor(relativeY / laneSpan);
+		return Math.max(Math.min(rawLane, laneCount - 1), 0);
+	}
+
+	handle_card_create_interaction_move(event) {
+		const interaction = this.card_create_interaction;
+		if (!interaction) {
+			return;
+		}
+
+		const hoveredDate = this.get_horizon_date_from_client_x(event.clientX);
+		if (!hoveredDate) {
+			return;
+		}
+
+		const nextStart = moment.min(interaction.anchor_date.clone(), hoveredDate.clone()).startOf("day");
+		const nextEnd = moment.max(interaction.anchor_date.clone(), hoveredDate.clone()).startOf("day");
+		const changed =
+			!nextStart.isSame(interaction.start_date, "day") ||
+			!nextEnd.isSame(interaction.end_date, "day");
+
+		interaction.start_date = nextStart;
+		interaction.end_date = nextEnd;
+		interaction.did_drag = interaction.did_drag || changed;
+		this.apply_card_create_preview(interaction);
+	}
+
+	apply_card_create_preview(interaction) {
+		const $preview = this.$horizon.find(".aster-studio-horizon__create-preview");
+		if (!$preview.length || !interaction?.start_date || !interaction?.end_date) {
+			return;
+		}
+
+		const horizonWindow = this.get_horizon_window();
+		const startColumn = Math.max(interaction.start_date.diff(horizonWindow.start, "days"), 0) + 1;
+		const endColumn = Math.max(interaction.end_date.diff(horizonWindow.start, "days"), 0) + 2;
+		const left = (startColumn - 1) * this.day_width + 8;
+		const width = Math.max((endColumn - startColumn) * this.day_width - 16, this.day_width - 16);
+		const laneIndex = Math.max(cint(interaction.lane_index || 0), 0);
+		const laneHeight = Math.max(cint(this.horizon_segments?.lane_height || 74), 1);
+		const laneGap = 12;
+		const previewHeight = Math.min(Math.max(laneHeight - 14, 34), 46);
+		const top = 36 + laneIndex * (laneHeight + laneGap) + Math.max((laneHeight - previewHeight) / 2, 0);
+		const label = interaction.start_date.isSame(interaction.end_date, "day")
+			? interaction.start_date.format("DD.MM.YYYY")
+			: `${interaction.start_date.format("DD.MM.YYYY")} - ${interaction.end_date.format("DD.MM.YYYY")}`;
+
+		$preview
+			.addClass("is-active")
+			.css({
+				left: `${left}px`,
+				top: `${top}px`,
+				height: `${previewHeight}px`,
+				width: `${width}px`,
+			})
+			.find(".aster-studio-horizon__create-preview-label")
+			.remove();
+
+		$preview.append(
+			$(`<div class="aster-studio-horizon__create-preview-label">${frappe.utils.escape_html(label)}</div>`)
+		);
+	}
+
+	finish_card_create_interaction() {
+		const interaction = this.card_create_interaction;
+		if (!interaction) {
+			return;
+		}
+
+		this.$horizon.find(".aster-studio-horizon__create-preview").removeClass("is-active").empty().attr("style", "");
+		this.card_create_interaction = null;
+
+		if (!interaction.did_drag) {
+			return;
+		}
+
+		this.open_create_dialog(interaction.start_date.clone(), interaction.end_date.clone());
 	}
 
 	start_card_resize_interaction(event, mode) {
@@ -1605,21 +2662,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return (this.state.planning_cards || []).find((card) => card.name === name);
 	}
 
-	get_selected_activity_types() {
-		const value = this.activity_type_filter.get_value();
-		if (!value) {
-			return [];
-		}
-		if (Array.isArray(value)) {
-			return value.filter(Boolean);
-		}
-		if (typeof value === "string") {
-			return value
-				.split(",")
-				.map((item) => item.trim())
-				.filter(Boolean);
-		}
-		return [value];
+	get_selected_projects() {
+		return [...this.get_filter_values("projects")];
+	}
+
+	get_selected_task_types() {
+		return [...this.get_filter_values("task_types")];
+	}
+
+	get_selected_operations() {
+		return [...this.get_filter_values("operations")];
 	}
 
 	get_focus_window() {
@@ -1657,6 +2709,20 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	to_system_datetime(value) {
 		return frappe.datetime.convert_to_system_tz(moment(value).format(frappe.defaultDatetimeFormat));
+	}
+
+	to_system_day_start(value) {
+		const parsed = this.parse_user_date(value);
+		return parsed
+			? frappe.datetime.convert_to_system_tz(parsed.clone().startOf("day").format(frappe.defaultDatetimeFormat))
+			: null;
+	}
+
+	to_system_day_end(value) {
+		const parsed = this.parse_user_date(value);
+		return parsed
+			? frappe.datetime.convert_to_system_tz(parsed.clone().hour(23).minute(59).second(59).format(frappe.defaultDatetimeFormat))
+			: null;
 	}
 
 	to_user_moment(value) {
@@ -2289,6 +3355,167 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				padding: 18px;
 			}
 
+			.aster-planning-card-dialog .modal-dialog {
+				max-width: min(980px, 88vw);
+				width: min(980px, 88vw);
+			}
+
+			.aster-planning-card-dialog .modal-content {
+				border-radius: 18px;
+			}
+
+			.aster-planning-card-dialog .modal-body {
+				max-height: min(80vh, 880px);
+				overflow-y: auto;
+			}
+
+			.aster-planning-card-dialog .form-layout,
+			.aster-planning-card-dialog .form-page {
+				margin: 0 auto;
+				max-width: 860px;
+			}
+
+			.aster-planning-card-dialog .section-body {
+				padding-inline: 8px;
+			}
+
+			.aster-planning-card-dialog .frappe-control {
+				max-width: 100%;
+			}
+
+			.aster-planning-card-dialog__required-hours .control-label {
+				color: #8b2d12;
+				font-weight: 700;
+			}
+
+			.aster-planning-card-dialog__required-hours .control-input-wrapper input {
+				background: #fff8f1;
+				border-color: rgba(139, 45, 18, 0.24);
+				box-shadow: inset 0 0 0 1px rgba(139, 45, 18, 0.06);
+			}
+
+			.aster-studio-dialog-panel {
+				background: rgba(36, 49, 60, 0.03);
+				border: 1px solid rgba(36, 49, 60, 0.08);
+				border-radius: 18px;
+				margin-top: 8px;
+				padding: 16px;
+			}
+
+			.aster-studio-dialog-panel__head h4 {
+				font-size: 15px;
+				font-weight: 700;
+				margin: 0;
+			}
+
+			.aster-studio-dialog-panel__head p {
+				color: var(--studio-soft);
+				font-size: 12px;
+				margin: 4px 0 0;
+			}
+
+			.aster-studio-dialog-panel__list {
+				display: grid;
+				gap: 10px;
+				margin-top: 14px;
+			}
+
+			.aster-studio__dialog-capacity-table {
+				display: grid;
+			}
+
+			.aster-studio__dialog-capacity-row {
+				align-items: start;
+				border-top: 1px solid rgba(36, 49, 60, 0.08);
+				display: grid;
+				gap: 12px;
+				grid-template-columns: minmax(0, 1.8fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) auto;
+				padding: 12px 0;
+			}
+
+			.aster-studio__dialog-capacity-row.is-head {
+				align-items: center;
+				border-top: 0;
+				color: var(--studio-soft);
+				font-size: 12px;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				padding-top: 0;
+				text-transform: uppercase;
+			}
+
+			.aster-studio__dialog-capacity-row.is-assigned {
+				background: rgba(157, 18, 255, 0.03);
+			}
+
+			.aster-studio__dialog-capacity-name {
+				min-width: 0;
+			}
+
+			.aster-studio__dialog-capacity-meta {
+				color: var(--studio-soft);
+				display: flex;
+				flex-wrap: wrap;
+				font-size: 12px;
+				gap: 10px;
+				margin-top: 4px;
+			}
+
+			.aster-studio__dialog-capacity-badges {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+				margin-top: 8px;
+			}
+
+			.aster-studio__dialog-capacity-action {
+				display: flex;
+				justify-content: flex-end;
+			}
+
+			.aster-studio-employee__assign {
+				border: 0;
+				border-radius: 999px;
+				box-shadow: 0 6px 16px rgba(28, 41, 49, 0.12);
+				font-weight: 700;
+				min-width: 118px;
+				padding: 7px 12px;
+				transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+			}
+
+			.aster-studio-employee__assign:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 10px 22px rgba(28, 41, 49, 0.16);
+			}
+
+			.aster-studio-employee__assign.is-assign {
+				background: linear-gradient(135deg, rgba(157, 18, 255, 0.96) 0%, rgba(118, 46, 220, 0.96) 100%);
+				color: #fff;
+			}
+
+			.aster-studio-employee__assign.is-assign:hover,
+			.aster-studio-employee__assign.is-assign:focus {
+				background: linear-gradient(135deg, rgba(146, 12, 238, 1) 0%, rgba(106, 38, 205, 1) 100%);
+				color: #fff;
+			}
+
+			.aster-studio-employee__assign.is-remove {
+				background: rgba(185, 75, 75, 0.12);
+				color: #9f2f2f;
+				box-shadow: inset 0 0 0 1px rgba(185, 75, 75, 0.18);
+			}
+
+			.aster-studio-employee__assign.is-remove:hover,
+			.aster-studio-employee__assign.is-remove:focus {
+				background: rgba(185, 75, 75, 0.18);
+				color: #8d2323;
+			}
+
+			.aster-studio-dialog-panel__loading {
+				color: var(--studio-soft);
+				font-size: 13px;
+			}
+
 			.aster-studio__horizon-panel {
 				padding-left: 0;
 				padding-right: 0;
@@ -2297,6 +3524,156 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio__horizon-panel .aster-studio__panel-head {
 				padding: 0 18px;
+			}
+
+			.aster-studio__calendar-filters {
+				align-items: start;
+				border-top: 1px solid rgba(36, 49, 60, 0.06);
+				display: flex;
+				flex-wrap: wrap;
+				gap: 14px;
+				padding: 12px 18px 10px;
+				position: relative;
+				z-index: 6;
+			}
+
+			.aster-filter-picker {
+				flex: 0 1 280px;
+				min-width: 240px;
+				position: relative;
+			}
+
+			.aster-filter-picker__label {
+				color: var(--text-muted);
+				font-size: 12px;
+				font-weight: 600;
+				margin-bottom: 6px;
+			}
+
+			.aster-filter-picker__trigger {
+				align-items: center;
+				background: #fff;
+				border: 1px solid rgba(157, 18, 255, 0.28);
+				border-radius: 16px;
+				box-shadow: 0 6px 16px rgba(33, 48, 61, 0.08);
+				display: flex;
+				gap: 10px;
+				justify-content: space-between;
+				min-height: 44px;
+				padding: 10px 14px;
+				text-align: left;
+				width: 100%;
+			}
+
+			.aster-filter-picker.is-open .aster-filter-picker__trigger {
+				border-color: rgba(122, 0, 214, 0.45);
+				box-shadow: 0 0 0 3px rgba(157, 18, 255, 0.08);
+			}
+
+			.aster-filter-picker__trigger-text {
+				color: var(--studio-ink);
+				flex: 1 1 auto;
+				font-size: 14px;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.aster-filter-picker__trigger-meta {
+				align-items: center;
+				display: inline-flex;
+				flex: 0 0 auto;
+				gap: 8px;
+			}
+
+			.aster-filter-picker__count {
+				align-items: center;
+				background: rgba(157, 18, 255, 0.12);
+				border-radius: 999px;
+				color: var(--studio-accent-strong);
+				display: inline-flex;
+				font-size: 12px;
+				font-weight: 700;
+				height: 22px;
+				justify-content: center;
+				min-width: 22px;
+				padding: 0 7px;
+			}
+
+			.aster-filter-picker__caret {
+				color: var(--studio-soft);
+				display: inline-flex;
+			}
+
+			.aster-filter-picker__menu {
+				background: #fff;
+				border: 1px solid rgba(195, 209, 221, 0.9);
+				border-radius: 18px;
+				box-shadow: 0 18px 34px rgba(33, 48, 61, 0.14);
+				display: none;
+				left: 0;
+				margin-top: 8px;
+				overflow: hidden;
+				position: absolute;
+				top: 100%;
+				width: min(320px, 92vw);
+				z-index: 20;
+			}
+
+			.aster-filter-picker.is-open .aster-filter-picker__menu {
+				display: block;
+			}
+
+			.aster-filter-picker__search {
+				padding: 10px 10px 0;
+			}
+
+			.aster-filter-picker__search-input {
+				border-radius: 12px;
+				min-height: 36px;
+			}
+
+			.aster-filter-picker__options {
+				display: grid;
+				gap: 2px;
+				max-height: 260px;
+				overflow: auto;
+				padding: 8px 10px 10px;
+			}
+
+			.aster-filter-picker__option {
+				align-items: center;
+				border-radius: 12px;
+				cursor: pointer;
+				display: flex;
+				font-size: 13px;
+				font-weight: 600;
+				gap: 10px;
+				padding: 8px 10px;
+			}
+
+			.aster-filter-picker__option:hover {
+				background: rgba(36, 49, 60, 0.04);
+			}
+
+			.aster-filter-picker__checkbox {
+				flex: 0 0 auto;
+				margin: 0;
+			}
+
+			.aster-filter-picker__empty {
+				color: var(--studio-soft);
+				font-size: 13px;
+				padding: 10px;
+			}
+
+			.aster-filter-picker__actions {
+				align-items: center;
+				border-top: 1px solid rgba(36, 49, 60, 0.08);
+				display: flex;
+				justify-content: space-between;
+				padding: 10px;
 			}
 
 			.aster-studio__support {
@@ -2694,7 +4071,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio-horizon__body--continuous {
-				min-height: calc(84px + var(--lane-count) * var(--lane-height, 74px));
+				min-height: calc(168px + var(--lane-count) * var(--lane-height, 74px));
 				position: relative;
 				z-index: 1;
 			}
@@ -2703,7 +4080,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				background: rgba(255, 255, 255, 0.88);
 				border-bottom: 1px solid rgba(36, 49, 60, 0.08);
 				border-right: 1px solid rgba(36, 49, 60, 0.06);
-				min-height: calc(84px + var(--lane-count) * var(--lane-height, 74px));
+				min-height: calc(168px + var(--lane-count) * var(--lane-height, 74px));
 				padding: 0;
 				position: relative;
 				transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
@@ -2729,35 +4106,40 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio-horizon-cell__actions {
 				display: flex;
-				inset: 0;
-				justify-content: center;
 				align-items: center;
+				justify-content: center;
+				bottom: 54px;
+				left: 50%;
 				position: absolute;
-				z-index: 1;
+				pointer-events: none;
+				transform: translateX(-50%);
+				z-index: 4;
 			}
 
 			.aster-studio-day__create {
 				align-items: center;
-				background: transparent;
-				border: 0;
+				background: rgba(255, 255, 255, 0.92);
+				border: 1px solid rgba(36, 49, 60, 0.12);
 				border-radius: 999px;
-				color: rgba(36, 49, 60, 0.18);
+				box-shadow: 0 4px 10px rgba(28, 41, 49, 0.08);
+				color: rgba(36, 49, 60, 0.55);
 				cursor: pointer;
 				display: inline-flex;
 				font-size: 18px;
-				font-weight: 300;
-				height: 24px;
+				font-weight: 500;
+				height: 26px;
 				justify-content: center;
 				line-height: 1;
-				opacity: 0.6;
+				opacity: 1;
 				padding: 0;
+				pointer-events: auto;
 				transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
-				width: 24px;
+				width: 26px;
 			}
 
 			.aster-studio-day__create:hover {
-				background: rgba(36, 49, 60, 0.05);
-				color: rgba(36, 49, 60, 0.48);
+				background: rgba(255, 255, 255, 1);
+				color: rgba(157, 18, 255, 0.88);
 				opacity: 1;
 			}
 
@@ -2773,6 +4155,34 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				right: 0;
 				top: 0;
 				z-index: 2;
+			}
+
+			.aster-studio-horizon__create-preview {
+				align-items: center;
+				background: linear-gradient(135deg, rgba(157, 18, 255, 0.16), rgba(157, 18, 255, 0.24));
+				border: 1px dashed rgba(157, 18, 255, 0.58);
+				border-radius: 14px;
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.26), 0 8px 20px rgba(157, 18, 255, 0.12);
+				color: rgba(82, 12, 130, 0.96);
+				display: none;
+				justify-content: center;
+				padding: 0 12px;
+				pointer-events: none;
+				position: absolute;
+				z-index: 3;
+			}
+
+			.aster-studio-horizon__create-preview.is-active {
+				display: flex;
+			}
+
+			.aster-studio-horizon__create-preview-label {
+				font-size: 12px;
+				font-weight: 700;
+				line-height: 1;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
 			}
 
 			.aster-studio-horizon__empty-note {
@@ -2900,17 +4310,18 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio-card__title {
-				flex: 0 1 auto;
+				flex: 1 1 auto;
 				font-size: 14px;
 				font-weight: 700;
 				min-width: 0;
-				max-width: 55%;
+				max-width: none;
 			}
 
 			.aster-studio-card__subtitle {
-				flex: 1 1 auto;
+				flex: 0 1 auto;
 				min-width: 0;
 				opacity: 0.95;
+				text-align: right;
 			}
 
 			.aster-studio-card__segments {
@@ -3133,11 +4544,17 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					grid-template-columns: 1fr;
 				}
 
+				.aster-studio__dialog-capacity-row,
+				.aster-studio__dialog-capacity-row.is-head,
 				.aster-studio__capacity-table-row,
 				.aster-studio__capacity-table-row.is-head,
 				.aster-studio__absence-table-row,
 				.aster-studio__absence-table-row.is-head {
 					grid-template-columns: 1fr;
+				}
+
+				.aster-studio__dialog-capacity-action {
+					justify-content: flex-start;
 				}
 			}
 		</style>`).appendTo(document.head);

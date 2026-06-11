@@ -16,6 +16,7 @@
   "start_date",
   "end_date",
   "required_hours",
+  "planned_employee_count",
   "hours_per_employee_per_day",
   "allocated_hours",
   "adjust_end_date_for_parallel_work",
@@ -39,8 +40,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Project",
-   "options": "Project",
-   "reqd": 1
+   "options": "Project"
   },
   {
    "fieldname": "elementgruppe",
@@ -79,8 +79,7 @@
    "fieldname": "end_date",
    "fieldtype": "Datetime",
    "in_list_view": 1,
-   "label": "End Date",
-   "read_only": 1
+   "label": "End Date"
   },
   {
    "fieldname": "required_hours",
@@ -91,10 +90,17 @@
    "reqd": 1
   },
   {
+   "default": "0",
+   "fieldname": "planned_employee_count",
+   "fieldtype": "Int",
+   "label": "Employee Count",
+   "non_negative": 1
+  },
+  {
    "default": "8",
    "fieldname": "hours_per_employee_per_day",
    "fieldtype": "Float",
-   "label": "Calculated Hours per Employee per Day",
+   "label": "Calculated Hours per Day",
    "non_negative": 1,
    "precision": "2",
    "reqd": 1

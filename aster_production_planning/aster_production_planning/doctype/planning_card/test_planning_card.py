@@ -60,3 +60,49 @@ class TestPlanningCard(FrappeTestCase):
 		finally:
 			settings.exclude_weekends_from_planning_duration = original_value
 			settings.save(ignore_permissions=True)
+
+	def test_required_hours_can_be_derived_from_manual_end_date_without_employees(self):
+		settings = frappe.get_single("Planning Settings")
+		original_without_employees = flt(settings.default_hours_per_day_without_employees or 8)
+
+		try:
+			settings.default_hours_per_day_without_employees = 6
+			settings.save(ignore_permissions=True)
+
+			doc = frappe.new_doc("Planning Card")
+			doc.project = "_Test Project"
+			doc.start_date = "2026-04-16 08:00:00"
+			doc.end_date = "2026-04-18 12:00:00"
+			doc.planned_employee_count = 0
+			doc.flags.manual_end_date = True
+
+			doc.run_method("validate")
+
+			self.assertEqual(flt(doc.hours_per_employee_per_day), 6.0)
+			self.assertEqual(flt(doc.required_hours), 18.0)
+			self.assertEqual(get_datetime(doc.end_date).strftime("%Y-%m-%d %H:%M:%S"), "2026-04-18 23:59:59")
+		finally:
+			settings.default_hours_per_day_without_employees = original_without_employees
+			settings.save(ignore_permissions=True)
+
+	def test_default_daily_hours_follow_employee_setting(self):
+		settings = frappe.get_single("Planning Settings")
+		original_per_employee = flt(settings.default_hours_per_employee_per_day or 8)
+
+		try:
+			settings.default_hours_per_employee_per_day = 7.5
+			settings.save(ignore_permissions=True)
+
+			doc = frappe.new_doc("Planning Card")
+			doc.project = "_Test Project"
+			doc.start_date = "2026-04-16 08:00:00"
+			doc.required_hours = 15
+			doc.planned_employee_count = 2
+
+			doc.run_method("validate")
+
+			self.assertEqual(flt(doc.hours_per_employee_per_day), 15.0)
+			self.assertEqual(get_datetime(doc.end_date).strftime("%Y-%m-%d %H:%M:%S"), "2026-04-16 23:59:59")
+		finally:
+			settings.default_hours_per_employee_per_day = original_per_employee
+			settings.save(ignore_permissions=True)
