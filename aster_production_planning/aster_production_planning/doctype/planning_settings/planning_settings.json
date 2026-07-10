@@ -10,6 +10,10 @@
   "exclude_weekends_from_planning_duration",
   "default_hours_per_employee_per_day",
   "default_hours_per_day_without_employees",
+  "event_planning_card_section",
+  "event_card_color",
+  "event_card_icon",
+  "show_leave_type_in_planning_studio",
   "capacity_employees_section",
   "capacity_employees",
   "capacity_departments_section",
@@ -49,6 +53,32 @@
    "precision": "2"
   },
   {
+   "fieldname": "event_planning_card_section",
+   "fieldtype": "Section Break",
+   "label": "Event Planning Cards"
+  },
+  {
+   "default": "#c35f24",
+   "description": "Default color used for Event Planning Cards in the studio and calendar.",
+   "fieldname": "event_card_color",
+   "fieldtype": "Color",
+   "label": "Event Card Color"
+  },
+  {
+   "default": "calendar",
+   "description": "Icon shown on Event Planning Cards.",
+   "fieldname": "event_card_icon",
+   "fieldtype": "Icon",
+   "label": "Event Card Icon"
+  },
+  {
+   "default": "1",
+   "description": "If enabled, the Leave column is shown in the Absences table of the Planning Studio.",
+   "fieldname": "show_leave_type_in_planning_studio",
+   "fieldtype": "Check",
+   "label": "Show Leave Type in Planning Studio"
+  },
+  {
    "fieldname": "capacity_employees_section",
    "fieldtype": "Section Break",
    "label": "Capacity Employees"
@@ -84,7 +114,7 @@
  ],
  "icon": "fa fa-sliders",
  "issingle": 1,
- "modified": "2026-04-22 00:00:00.000000",
+ "modified": "2026-07-08 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Aster Production Planning",
  "name": "Planning Settings",

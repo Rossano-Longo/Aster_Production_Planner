@@ -1,6 +1,6 @@
 frappe.provide("aster_production_planning.planning_setup");
 
-const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v4";
+const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v5";
 
 frappe.pages["planning-setup"].on_page_load = function (wrapper) {
 	wrapper.planning_setup = new aster_production_planning.planning_setup.Page(wrapper);
@@ -52,6 +52,13 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 						<div class="aster-settings__field" data-field="default_hours_per_day_without_employees"></div>
 					</section>
 					<section class="aster-settings__card">
+						<h3>${__("Event Planning Cards")}</h3>
+						<p>${__("Define the default appearance of Event Planning Cards in the Planning Studio and calendar views.")}</p>
+						<div class="aster-settings__field" data-field="event_card_color"></div>
+						<div class="aster-settings__field" data-field="event_card_icon"></div>
+						<div class="aster-settings__field" data-field="show_leave_type_in_planning_studio"></div>
+					</section>
+					<section class="aster-settings__card">
 						<h3>${__("Employees")}</h3>
 						<p>${__("Only these employees are considered as capacity. Empty means all employees.")}</p>
 						<div class="aster-settings__field" data-field="employees"></div>
@@ -84,6 +91,18 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 			"default_hours_per_day_without_employees",
 			__("Default hours per day without employees")
 		);
+		this.controls.event_card_color = this.make_color_control(
+			"event_card_color",
+			__("Event card color")
+		);
+		this.controls.event_card_icon = this.make_icon_control(
+			"event_card_icon",
+			__("Event card icon")
+		);
+		this.controls.show_leave_type_in_planning_studio = this.make_check_control(
+			"show_leave_type_in_planning_studio",
+			__("Show Leave Type in Planning Studio")
+		);
 		this.controls.employees = this.make_multiselect_control("employees", __("Employees"), "Employee");
 		this.controls.departments = this.make_multiselect_control("departments", __("Departments"), "Department");
 		this.controls.activity_types = this.make_multiselect_control("activity_types", __("Activity Types"), "Activity Type");
@@ -114,6 +133,38 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				label,
 				default: 8,
 				precision: 2,
+			},
+			render_input: true,
+		});
+
+		control.refresh();
+		return control;
+	}
+
+	make_color_control(fieldname, label) {
+		const control = frappe.ui.form.make_control({
+			parent: this.$layout.find(`[data-field="${fieldname}"]`).get(0),
+			df: {
+				fieldname,
+				fieldtype: "Color",
+				label,
+				default: "#c35f24",
+			},
+			render_input: true,
+		});
+
+		control.refresh();
+		return control;
+	}
+
+	make_icon_control(fieldname, label) {
+		const control = frappe.ui.form.make_control({
+			parent: this.$layout.find(`[data-field="${fieldname}"]`).get(0),
+			df: {
+				fieldname,
+				fieldtype: "Icon",
+				label,
+				default: "calendar",
 			},
 			render_input: true,
 		});
@@ -160,6 +211,11 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				this.controls.default_hours_per_day_without_employees.set_value(
 					flt(settings.default_hours_per_day_without_employees || 8, 2)
 				);
+				this.controls.event_card_color.set_value(settings.event_card_color || "#c35f24");
+				this.controls.event_card_icon.set_value(settings.event_card_icon || "calendar");
+				this.controls.show_leave_type_in_planning_studio.set_value(
+					cint(settings.show_leave_type_in_planning_studio ?? 1)
+				);
 				this.controls.employees.set_value(settings.employees || []);
 				this.controls.departments.set_value(settings.departments || []);
 				this.controls.activity_types.set_value(settings.activity_types || []);
@@ -181,6 +237,11 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				default_hours_per_day_without_employees: flt(
 					this.controls.default_hours_per_day_without_employees.get_value() || 8,
 					2
+				),
+				event_card_color: this.controls.event_card_color.get_value() || "#c35f24",
+				event_card_icon: this.controls.event_card_icon.get_value() || "calendar",
+				show_leave_type_in_planning_studio: cint(
+					this.controls.show_leave_type_in_planning_studio.get_value() ?? 1
 				),
 				employees: this.normalize_values(this.controls.employees.get_value()),
 				departments: this.normalize_values(this.controls.departments.get_value()),

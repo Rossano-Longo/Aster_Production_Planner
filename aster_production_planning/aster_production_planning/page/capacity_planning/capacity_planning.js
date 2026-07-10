@@ -421,13 +421,21 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 					.map((card) => {
 						const start = this.format_datetime(card.start_date);
 						const end = this.format_datetime(card.end_date);
+						const timeLabel = this.get_card_time_label(card);
+						const cardType = (card.card_type || "Produktion").trim() || "Produktion";
+						const meta = cardType === "Event" ? cardType : `${this.format_hours(card.duration_in_hours)} h`;
 						return `
 							<div class="aster-planning-card-row">
 								<div class="aster-planning-card-row__swatch" style="background:${card.color || "#2f6f61"}"></div>
 								<div class="aster-planning-card-row__body">
-									<div class="aster-planning-card-row__title">${frappe.utils.escape_html(card.title)}</div>
-									<div class="aster-planning-card-row__meta">${frappe.utils.escape_html(card.name)} · ${this.format_hours(card.duration_in_hours)} h</div>
+									<div class="aster-planning-card-row__title">${this.get_card_icon_markup(card)}${frappe.utils.escape_html(card.title)}</div>
+									<div class="aster-planning-card-row__meta">${frappe.utils.escape_html(card.name)} · ${frappe.utils.escape_html(meta)}</div>
 									<div class="aster-planning-card-row__meta">${frappe.utils.escape_html(start)} -> ${frappe.utils.escape_html(end)}</div>
+									${
+										timeLabel
+											? `<div class="aster-planning-card-row__meta">${frappe.utils.escape_html(timeLabel)}</div>`
+											: ""
+									}
 								</div>
 							</div>
 						`;
@@ -597,6 +605,8 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 				const top = this.get_offset_from_time(segment.start);
 				const height = Math.max(this.get_offset_from_time(segment.end) - top, 58);
 				const compact = height < 92;
+				const title = this.get_card_title(card);
+				const subtitle = this.get_card_subtitle(card);
 				const $block = $(`
 					<div
 						class="aster-planning-block ${compact ? "is-compact" : ""} ${card.name === this.preview_card?.name ? "is-preview" : ""}"
@@ -604,9 +614,8 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 						style="top:${top}px;height:${height}px;background:${card.color || "#2f6f61"}"
 					>
 						<div class="aster-planning-block__body">
-							<div class="aster-planning-block__project">${frappe.utils.escape_html(card.project)}</div>
-							<div class="aster-planning-block__operation">${frappe.utils.escape_html(card.operation)}</div>
-							<div class="aster-planning-block__time">${segment.start.format("HH:mm")} - ${segment.end.format("HH:mm")}</div>
+							<div class="aster-planning-block__project">${this.get_card_icon_markup(card)}${frappe.utils.escape_html(title)}</div>
+							<div class="aster-planning-block__operation">${frappe.utils.escape_html(subtitle)}</div>
 						</div>
 						${
 							segment.is_last
@@ -618,6 +627,49 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 				$canvas.append($block);
 			});
 		});
+	}
+
+	get_card_type(card) {
+		return (card?.card_type || "Produktion").trim() || "Produktion";
+	}
+
+	get_card_title(card) {
+		return card?.project_display || card?.project || card?.name || __("Planning Card");
+	}
+
+	get_card_subtitle(card) {
+		if (this.get_card_type(card) === "Event") {
+			return [card?.description, this.get_card_time_label(card)]
+				.filter(Boolean)
+				.join(" ");
+		}
+
+		return [card?.operation || card?.task_type || card?.elementgruppe, this.get_card_time_label(card)]
+			.filter(Boolean)
+			.join(" · ");
+	}
+
+	get_card_time_label(card) {
+		const startTime = (card?.start_time || "").trim();
+		const endTime = (card?.end_time || "").trim();
+		if (!startTime && !endTime) {
+			return "";
+		}
+
+		if (startTime && endTime) {
+			return `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`;
+		}
+		if (startTime) {
+			return startTime.slice(0, 5);
+		}
+		return endTime.slice(0, 5);
+	}
+
+	get_card_icon_markup(card) {
+		if (!card?.icon) {
+			return "";
+		}
+		return `<span class="aster-card-icon">${frappe.utils.icon(card.icon, "sm")}</span>`;
 	}
 
 	render_now_marker() {
@@ -642,8 +694,8 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 	}
 
 	get_card_segments(card) {
-		const start = this.to_user_moment(card.start_date);
-		const end = this.to_user_moment(card.end_date);
+		const start = this.get_visual_card_start(card);
+		const end = this.get_visual_card_end(card);
 		const segments = [];
 		let cursor = start.clone();
 
@@ -659,6 +711,29 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 		}
 
 		return segments;
+	}
+
+	get_visual_card_start(card) {
+		const start = this.to_user_moment(card.start_date).clone();
+		return this.apply_optional_time(start, card?.start_time, "start");
+	}
+
+	get_visual_card_end(card) {
+		const end = this.to_user_moment(card.end_date).clone();
+		return this.apply_optional_time(end, card?.end_time, "end");
+	}
+
+	apply_optional_time(momentValue, timeValue, boundary) {
+		const normalized = String(timeValue || "").trim();
+		if (!normalized) {
+			return momentValue;
+		}
+
+		const parts = normalized.split(":").map((value) => cint(value || 0));
+		const hours = parts[0] || 0;
+		const minutes = parts[1] || 0;
+		const seconds = parts[2] || (boundary === "end" ? 59 : 0);
+		return momentValue.clone().hour(hours).minute(minutes).second(seconds);
 	}
 
 	open_create_dialog(selection_info = null) {
@@ -707,6 +782,16 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 					default: defaults.start_date,
 				},
 				{
+					fieldname: "start_time",
+					fieldtype: "Time",
+					label: __("Start Time"),
+				},
+				{
+					fieldname: "end_time",
+					fieldtype: "Time",
+					label: __("End Time"),
+				},
+				{
 					fieldname: "required_hours",
 					fieldtype: "Float",
 					label: __("Required Hours"),
@@ -729,6 +814,8 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 						operation: values.operation,
 						task_type: values.task_type,
 						start_date: frappe.datetime.convert_to_system_tz(values.start_date),
+						start_time: values.start_time,
+						end_time: values.end_time,
 						required_hours: values.required_hours,
 						note: values.note,
 					},
@@ -1710,6 +1797,12 @@ aster_production_planning.capacity_planning.Planner = class Planner {
 				font-size: 14px;
 				font-weight: 700;
 				margin-bottom: 4px;
+			}
+
+			.aster-card-icon {
+				display: inline-flex;
+				margin-right: 6px;
+				vertical-align: middle;
 			}
 
 			.aster-employee-list,

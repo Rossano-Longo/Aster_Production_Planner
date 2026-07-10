@@ -36,8 +36,10 @@ def get_planning_card_detail(name: str, activity_types=None, range_start=None, r
 
 @frappe.whitelist()
 def create_planning_card(
-	project: str | None,
-	start_date: str,
+	card_type: str | None = None,
+	project: str | None = None,
+	event_type: str | None = None,
+	start_date: str | None = None,
 	end_date: str | None = None,
 	operation: str | None = None,
 	elementgruppe: str | None = None,
@@ -45,12 +47,17 @@ def create_planning_card(
 	required_hours=None,
 	planned_employee_count=None,
 	hours_per_employee_per_day=None,
+	start_time: str | None = None,
+	end_time: str | None = None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=0,
+	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
 	return _create_planning_card(
+		card_type=card_type,
 		project=project,
+		event_type=event_type,
 		elementgruppe=elementgruppe,
 		operation=operation,
 		task_type=task_type,
@@ -59,8 +66,11 @@ def create_planning_card(
 		required_hours=required_hours,
 		planned_employee_count=planned_employee_count,
 		hours_per_employee_per_day=hours_per_employee_per_day,
+		start_time=start_time,
+		end_time=end_time,
 		assigned_employees=assigned_employees,
 		adjust_end_date_for_parallel_work=adjust_end_date_for_parallel_work,
+		description=description,
 		note=note,
 	)
 
@@ -68,7 +78,9 @@ def create_planning_card(
 @frappe.whitelist()
 def update_planning_card(
 	name: str,
+	card_type: str | None = None,
 	project: str | None = None,
+	event_type: str | None = None,
 	elementgruppe: str | None = None,
 	operation: str | None = None,
 	task_type: str | None = None,
@@ -77,13 +89,18 @@ def update_planning_card(
 	required_hours=None,
 	planned_employee_count=None,
 	hours_per_employee_per_day=None,
+	start_time: str | None = None,
+	end_time: str | None = None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=None,
+	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
 	return _update_planning_card(
 		name=name,
+		card_type=card_type,
 		project=project,
+		event_type=event_type,
 		elementgruppe=elementgruppe,
 		operation=operation,
 		task_type=task_type,
@@ -92,8 +109,11 @@ def update_planning_card(
 		required_hours=required_hours,
 		planned_employee_count=planned_employee_count,
 		hours_per_employee_per_day=hours_per_employee_per_day,
+		start_time=start_time,
+		end_time=end_time,
 		assigned_employees=assigned_employees,
 		adjust_end_date_for_parallel_work=adjust_end_date_for_parallel_work,
+		description=description,
 		note=note,
 	)
 

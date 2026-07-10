@@ -7,6 +7,8 @@ from aster_production_planning.aster_production_planning.page.capacity_planning.
 )
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	exclude_weekends_from_planning_duration,
+	get_event_card_color,
+	get_event_card_icon,
 )
 from aster_production_planning.aster_production_planning.page.planning_setup.planning_setup import (
 	_parse_json_list,
@@ -39,4 +41,41 @@ class TestPlanningSettings(FrappeTestCase):
 			self.assertTrue(exclude_weekends_from_planning_duration())
 		finally:
 			settings.exclude_weekends_from_planning_duration = original_value
+			settings.save(ignore_permissions=True)
+
+	def test_event_card_color_setting_can_be_changed(self):
+		settings = frappe.get_single("Planning Settings")
+		original_value = settings.event_card_color
+
+		try:
+			settings.event_card_color = "#112233"
+			settings.save(ignore_permissions=True)
+			self.assertEqual(get_event_card_color(), "#112233")
+		finally:
+			settings.event_card_color = original_value
+			settings.save(ignore_permissions=True)
+
+	def test_event_card_icon_setting_can_be_changed(self):
+		settings = frappe.get_single("Planning Settings")
+		original_value = settings.event_card_icon
+
+		try:
+			settings.event_card_icon = "star"
+			settings.save(ignore_permissions=True)
+			self.assertEqual(get_event_card_icon(), "star")
+		finally:
+			settings.event_card_icon = original_value
+			settings.save(ignore_permissions=True)
+
+	def test_show_leave_type_setting_can_be_disabled(self):
+		settings = frappe.get_single("Planning Settings")
+		original_value = cint(settings.show_leave_type_in_planning_studio or 0)
+
+		try:
+			settings.show_leave_type_in_planning_studio = 0
+			settings.save(ignore_permissions=True)
+			settings.reload()
+			self.assertEqual(cint(settings.show_leave_type_in_planning_studio or 0), 0)
+		finally:
+			settings.show_leave_type_in_planning_studio = original_value
 			settings.save(ignore_permissions=True)

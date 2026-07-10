@@ -73,6 +73,9 @@ def save_planning_settings(
 	exclude_weekends_from_planning_duration=0,
 	default_hours_per_employee_per_day=8,
 	default_hours_per_day_without_employees=8,
+	event_card_color=None,
+	event_card_icon=None,
+	show_leave_type_in_planning_studio=1,
 ) -> dict:
 	_require_access()
 	doc = _get_settings_doc() or frappe.new_doc(PLANNING_SETTINGS_DOCTYPE)
@@ -80,6 +83,9 @@ def save_planning_settings(
 	doc.exclude_weekends_from_planning_duration = cint(exclude_weekends_from_planning_duration)
 	doc.default_hours_per_employee_per_day = flt(default_hours_per_employee_per_day or 0, 2)
 	doc.default_hours_per_day_without_employees = flt(default_hours_per_day_without_employees or 0, 2)
+	doc.event_card_color = (event_card_color or "").strip() or None
+	doc.event_card_icon = (event_card_icon or "").strip() or None
+	doc.show_leave_type_in_planning_studio = cint(show_leave_type_in_planning_studio)
 	doc.set("capacity_employees", [{"employee": employee} for employee in _parse_json_list(employees)])
 	doc.set("capacity_departments", [{"department": department} for department in _parse_json_list(departments)])
 	doc.set(

@@ -1,13 +1,23 @@
 frappe.ui.form.on("Planning Card", {
 	setup(frm) {
 		frm.set_query("task_type", () => get_production_planning_task_type_query());
+		frm.set_query("event_type", () => get_event_type_query());
 	},
 
 	refresh(frm) {
+		apply_card_type_ui(frm);
+		update_end_date(frm);
+	},
+
+	card_type(frm) {
+		apply_card_type_ui(frm);
 		update_end_date(frm);
 	},
 
 	operation(frm) {
+		if (is_event_card(frm)) {
+			return;
+		}
 		load_operation_defaults(frm);
 	},
 
@@ -92,7 +102,30 @@ function ensure_planning_duration_settings(frm) {
 }
 
 function update_end_date(frm, source = "required_hours") {
+	if (is_event_card(frm)) {
+		apply_event_end_date(frm);
+		return;
+	}
 	ensure_planning_duration_settings(frm).then(() => apply_end_date(frm, source));
+}
+
+function apply_event_end_date(frm) {
+	if (!frm.doc.start_date) {
+		return;
+	}
+
+	const startMoment = moment(frm.doc.start_date).startOf("day");
+	let endMoment = frm.doc.end_date ? moment(frm.doc.end_date).startOf("day") : startMoment.clone();
+	if (endMoment.isBefore(startMoment, "day")) {
+		endMoment = startMoment.clone();
+	}
+
+	frm.__syncing_planning_schedule = true;
+	Promise.resolve(
+		frm.set_value("end_date", endMoment.clone().hour(23).minute(59).second(59).format(frappe.defaultDatetimeFormat))
+	).finally(() => {
+		frm.__syncing_planning_schedule = false;
+	});
 }
 
 function apply_end_date(frm, source = "required_hours") {
@@ -223,6 +256,10 @@ function count_planning_days(startMoment, endMoment, excludeWeekends) {
 }
 
 function load_operation_defaults(frm) {
+	if (is_event_card(frm)) {
+		return;
+	}
+
 	if (!frm.doc.operation) {
 		return;
 	}
@@ -268,4 +305,42 @@ function apply_production_planning_task_type(frm, taskType) {
 		.catch(() => {
 			frm.set_value("task_type", "");
 		});
+}
+
+function is_event_card(frm) {
+	return (frm.doc.card_type || "Produktion") === "Event";
+}
+
+function get_event_type_query() {
+	return {
+		order_by: "title asc",
+	};
+}
+
+function apply_card_type_ui(frm) {
+	const eventCard = is_event_card(frm);
+	const productionFields = [
+		"elementgruppe",
+		"operation",
+		"task_type",
+		"required_hours",
+		"planned_employee_count",
+		"hours_per_employee_per_day",
+		"allocated_hours",
+		"adjust_end_date_for_parallel_work",
+		"assigned_employees",
+		"note",
+		"color",
+	];
+
+	const eventFields = ["event_type", "description"];
+
+	productionFields.forEach((fieldname) => frm.toggle_display(fieldname, !eventCard));
+	eventFields.forEach((fieldname) => frm.toggle_display(fieldname, eventCard));
+	frm.toggle_display("planning_team_section", !eventCard);
+	frm.toggle_display("note", !eventCard);
+	frm.toggle_display("description", eventCard);
+
+	frm.set_df_property("required_hours", "reqd", eventCard ? 0 : 1);
+	frm.set_df_property("hours_per_employee_per_day", "reqd", eventCard ? 0 : 1);
 }

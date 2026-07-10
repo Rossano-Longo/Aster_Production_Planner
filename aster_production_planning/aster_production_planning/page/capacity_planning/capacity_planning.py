@@ -8,12 +8,16 @@ from frappe import _
 from frappe.utils import cint, flt, get_datetime, get_datetime_str, getdate
 from aster_production_planning.aster_production_planning.doctype.planning_card.planning_card import (
 	count_planning_days,
+	EVENT_CARD_TYPE,
 	get_last_planned_day,
+	PRODUCTION_CARD_TYPE,
 )
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	exclude_weekends_from_planning_duration,
 	get_default_hours_per_day_without_employees,
 	get_default_hours_per_employee_per_day,
+	get_event_card_color,
+	get_event_card_icon,
 	serialize_planning_settings,
 )
 
@@ -25,15 +29,20 @@ LEAVE_APPLICATION_DOCTYPE = "Leave Application"
 OPERATION_DOCTYPE = "Operation"
 PROJECT_DOCTYPE = "Project"
 TASK_TYPE_DOCTYPE = "Task Type"
+EVENT_TYPE_DOCTYPE = "Event Type"
 DEFAULT_ABSENCE_HOURS_PER_DAY = 8.0
 PLANNING_CARD_FIELDS = [
 	"name",
+	"card_type",
 	"project",
+	"event_type",
 	"elementgruppe",
 	"operation",
 	"task_type",
 	"start_date",
+	"start_time",
 	"end_date",
+	"end_time",
 	"required_hours",
 	"duration_in_hours",
 	"planned_employee_count",
@@ -41,6 +50,7 @@ PLANNING_CARD_FIELDS = [
 	"allocated_hours",
 	"adjust_end_date_for_parallel_work",
 	"color",
+	"description",
 	"note",
 ]
 
@@ -81,6 +91,26 @@ def _parse_activity_types(activity_types) -> list[str]:
 def _parse_link_filter_values(values) -> list[str]:
 	parsed = _parse_json_list(values)
 	return [value for value in parsed if value]
+
+
+def _normalize_optional_time_value(value):
+	if value in (None, ""):
+		return None
+
+	if isinstance(value, time):
+		return value.strftime("%H:%M:%S")
+
+	text = str(value).strip()
+	if not text:
+		return None
+
+	for fmt in ("%H:%M:%S", "%H:%M"):
+		try:
+			return datetime.strptime(text, fmt).strftime("%H:%M:%S")
+		except ValueError:
+			continue
+
+	return text
 
 
 def _unique_values(values) -> list[str]:
@@ -253,6 +283,56 @@ def get_overlap_hours(window_start, window_end, item_start, item_end=None, fallb
 	return flt((overlap_end - overlap_start).total_seconds() / 3600, 2)
 
 
+def _iter_planning_day_hours(planning_card):
+	if _is_event_card(planning_card):
+		return
+
+	card_start = get_datetime(planning_card.start_date) if planning_card.start_date else None
+	card_end = get_datetime(planning_card.end_date) if planning_card.end_date else None
+	required_hours = flt(planning_card.required_hours or planning_card.duration_in_hours, 2)
+	if not card_start or not card_end or required_hours <= 0:
+		return
+
+	exclude_weekends = exclude_weekends_from_planning_duration()
+	planned_days = count_planning_days(card_start.date(), card_end.date(), exclude_weekends)
+	if planned_days <= 0:
+		return
+
+	total_daily_hours = flt(getattr(planning_card, "hours_per_employee_per_day", 0) or 0, 2)
+	if total_daily_hours <= 0:
+		total_daily_hours = flt(required_hours / planned_days, 2)
+
+	current_day = card_start.date()
+	last_day = card_end.date()
+	remaining_hours = required_hours
+	emitted_days = 0
+	while current_day <= last_day and remaining_hours > 0:
+		if not exclude_weekends or current_day.weekday() < 5:
+			day_hours = flt(remaining_hours if emitted_days >= planned_days - 1 else min(total_daily_hours, remaining_hours), 2)
+			if day_hours > 0:
+				yield current_day, day_hours
+			remaining_hours = flt(remaining_hours - day_hours, 2)
+			emitted_days += 1
+		current_day += timedelta(days=1)
+
+
+def _get_planned_hours_in_window(window_start, window_end, planning_card) -> float:
+	if not window_start or not window_end or _is_event_card(planning_card):
+		return 0.0
+
+	range_start = window_start.date()
+	range_end = (window_end - timedelta(seconds=1)).date()
+	if range_end < range_start:
+		return 0.0
+
+	planned_hours = 0.0
+	for planning_day, day_hours in _iter_planning_day_hours(planning_card) or []:
+		if range_start <= planning_day <= range_end:
+			planned_hours += flt(day_hours, 2)
+
+	return flt(planned_hours, 2)
+
+
 def _get_operation_required_hours(operation: str) -> float:
 	if not operation:
 		return 0.0
@@ -267,6 +347,84 @@ def _get_operation_task_type(operation: str | None) -> str | None:
 
 	task_type = frappe.db.get_value(OPERATION_DOCTYPE, operation, "custom_task_type")
 	return task_type or None
+
+
+def _get_card_type(planning_card) -> str:
+	return (getattr(planning_card, "card_type", None) or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
+
+
+def _is_event_card(planning_card) -> bool:
+	return _get_card_type(planning_card) == EVENT_CARD_TYPE
+
+
+def _get_task_type_color_map(task_type_names) -> dict[str, str | None]:
+	task_type_names = _unique_values([(task_type or "").strip() for task_type in task_type_names or [] if task_type])
+	if not task_type_names:
+		return {}
+
+	return {
+		row.name: row.custom_color
+		for row in frappe.get_all(
+			TASK_TYPE_DOCTYPE,
+			fields=["name", "custom_color"],
+			filters={"name": ["in", task_type_names]},
+			limit_page_length=0,
+		)
+	}
+
+
+def _apply_live_task_type_colors(planning_cards, task_type_colors: dict[str, str | None] | None = None):
+	if not planning_cards:
+		return planning_cards
+
+	if task_type_colors is None:
+		task_type_colors = _get_task_type_color_map(
+			[getattr(planning_card, "task_type", None) for planning_card in planning_cards]
+		)
+
+	event_type_meta = _get_event_type_meta_map(
+		[
+			getattr(planning_card, "event_type", None)
+			for planning_card in planning_cards
+			if _is_event_card(planning_card)
+		]
+	)
+
+	for planning_card in planning_cards:
+		if _is_event_card(planning_card):
+			event_type = (getattr(planning_card, "event_type", None) or "").strip()
+			event_meta = event_type_meta.get(event_type, {})
+			planning_card.color = event_meta.get("color") or get_event_card_color()
+			planning_card.icon = event_meta.get("icon") or get_event_card_icon()
+			planning_card.event_type_title = event_meta.get("title") or event_type or None
+			continue
+
+		task_type = (getattr(planning_card, "task_type", None) or "").strip()
+		planning_card.color = task_type_colors.get(task_type) if task_type else None
+		planning_card.icon = None
+		planning_card.event_type_title = None
+
+	return planning_cards
+
+
+def _get_event_type_meta_map(event_type_names: list[str] | None) -> dict[str, dict[str, str | None]]:
+	names = [(name or "").strip() for name in (event_type_names or []) if (name or "").strip()]
+	if not names:
+		return {}
+
+	return {
+		row.name: {
+			"title": row.title or row.name,
+			"color": row.color,
+			"icon": row.icon,
+		}
+		for row in frappe.get_all(
+			EVENT_TYPE_DOCTYPE,
+			fields=["name", "title", "color", "icon"],
+			filters={"name": ["in", list(dict.fromkeys(names))]},
+			limit_page_length=0,
+		)
+	}
 
 
 def _get_planning_cards(window_start, window_end, projects=None, task_types=None, operations=None) -> list[dict]:
@@ -285,18 +443,23 @@ def _get_planning_cards(window_start, window_end, projects=None, task_types=None
 		PLANNING_CARD_DOCTYPE,
 		fields=[
 			"name",
+			"card_type",
 			"project",
+			"event_type",
 			"elementgruppe",
 			"operation",
 			"task_type",
 			"start_date",
+			"start_time",
 			"end_date",
+			"end_time",
 			"required_hours",
 			"duration_in_hours",
 			"planned_employee_count",
 			"hours_per_employee_per_day",
 			"adjust_end_date_for_parallel_work",
 			"color",
+			"description",
 			"note",
 		],
 		filters=card_filters,
@@ -344,7 +507,7 @@ def _get_planning_cards(window_start, window_end, projects=None, task_types=None
 		planning_card.assigned_employees = assignments_by_parent.get(planning_card.name, [])
 		planning_card.project_display = project_names.get(planning_card.project, planning_card.project)
 
-	return planning_cards
+	return _apply_live_task_type_colors(planning_cards)
 
 
 def _get_timesheet_capacity(window_start, window_end, capacity_filters: dict | None = None) -> list[dict]:
@@ -579,24 +742,39 @@ def _get_daily_capacity(window_start, window_end, capacity_rows: list[dict]) -> 
 
 
 def _serialize_planning_card(planning_card) -> dict:
+	card_type = _get_card_type(planning_card)
 	required_hours = flt(planning_card.required_hours or planning_card.duration_in_hours, 2)
 	assigned_employees = planning_card.assigned_employees or []
-	end_datetime = _get_computed_end_datetime(planning_card, required_hours, assigned_employees)
+	end_datetime = (
+		get_datetime(planning_card.end_date)
+		if _is_event_card(planning_card)
+		else _get_computed_end_datetime(planning_card, required_hours, assigned_employees)
+	)
 	total_daily_hours = _get_total_daily_hours(planning_card, assigned_employees)
 	project_display = getattr(planning_card, "project_display", None)
 	if not project_display and planning_card.project:
 		project_display = frappe.db.get_value(PROJECT_DOCTYPE, planning_card.project, "project_name")
 	project_display = project_display or planning_card.project
+	title_parts = (
+		[project_display, planning_card.operation, planning_card.task_type]
+		if card_type == PRODUCTION_CARD_TYPE
+		else [getattr(planning_card, "event_type_title", None), planning_card.description, project_display]
+	)
 	return {
 		"name": planning_card.name,
-		"title": " · ".join(filter(None, [project_display, planning_card.operation, planning_card.task_type])),
+		"title": " · ".join(filter(None, title_parts)),
+		"card_type": card_type,
 		"project": planning_card.project,
 		"project_display": project_display,
+		"event_type": getattr(planning_card, "event_type", None),
+		"event_type_display": getattr(planning_card, "event_type_title", None),
 		"elementgruppe": planning_card.elementgruppe,
 		"operation": planning_card.operation,
 		"task_type": planning_card.task_type,
 		"start_date": get_datetime_str(planning_card.start_date),
+		"start_time": getattr(planning_card, "start_time", None),
 		"end_date": get_datetime_str(end_datetime),
+		"end_time": getattr(planning_card, "end_time", None),
 		"required_hours": required_hours,
 		"duration_in_hours": required_hours,
 		"planned_employee_count": _get_planned_employee_count(planning_card, assigned_employees),
@@ -606,7 +784,9 @@ def _serialize_planning_card(planning_card) -> dict:
 		"assigned_employees": assigned_employees,
 		"assigned_employee_count": len(assigned_employees),
 		"assigned_employee_names": [row["employee_name"] for row in assigned_employees if row.get("employee_name")],
-		"color": planning_card.color,
+		"color": getattr(planning_card, "color", None),
+		"icon": getattr(planning_card, "icon", None),
+		"description": getattr(planning_card, "description", None),
 		"note": planning_card.note,
 	}
 
@@ -684,6 +864,7 @@ def _get_planning_card_with_assignments(name: str):
 		for row in assignments
 	]
 	doc.project_display = frappe.db.get_value(PROJECT_DOCTYPE, doc.project, "project_name") or doc.project
+	_apply_live_task_type_colors([doc])
 	return doc
 
 
@@ -782,16 +963,16 @@ def _get_task_type_breakdown(window_start, window_end, planning_cards) -> list[d
 	)
 
 	for planning_card in planning_cards:
+		if _is_event_card(planning_card):
+			continue
+
 		task_type = (planning_card.task_type or "").strip() if planning_card.task_type else None
 		bucket_key = task_type or "__without_task_type__"
 		bucket = task_type_totals[bucket_key]
 		bucket["task_type"] = task_type
 		bucket["label"] = task_type or _("Without Task Type")
 
-		card_start = get_datetime(planning_card.start_date)
-		required_hours = flt(planning_card.required_hours or planning_card.duration_in_hours, 2)
-		card_end = _get_computed_end_datetime(planning_card, required_hours, planning_card.assigned_employees or [])
-		bucket["planned_hours"] += get_overlap_hours(window_start, window_end, card_start, card_end, required_hours)
+		bucket["planned_hours"] += _get_planned_hours_in_window(window_start, window_end, planning_card)
 
 		for row in planning_card.assigned_employees or []:
 			bucket["assigned_hours"] += _assignment_hours_in_window(
@@ -799,17 +980,7 @@ def _get_task_type_breakdown(window_start, window_end, planning_cards) -> list[d
 			)
 
 	task_type_names = [item["task_type"] for item in task_type_totals.values() if item["task_type"]]
-	task_type_colors = {}
-	if task_type_names:
-		task_type_colors = {
-			row.name: row.custom_color
-			for row in frappe.get_all(
-				TASK_TYPE_DOCTYPE,
-				fields=["name", "custom_color"],
-				filters={"name": ["in", task_type_names]},
-				limit_page_length=0,
-			)
-		}
+	task_type_colors = _get_task_type_color_map(task_type_names)
 
 	return sorted(
 		[
@@ -867,10 +1038,10 @@ def get_planning_dashboard_data(
 
 	total_planned_hours = 0.0
 	for planning_card in planning_cards:
-		card_start = get_datetime(planning_card.start_date)
-		required_hours = flt(planning_card.required_hours or planning_card.duration_in_hours, 2)
-		card_end = _get_computed_end_datetime(planning_card, required_hours, planning_card.assigned_employees or [])
-		total_planned_hours += get_overlap_hours(window_start, window_end, card_start, card_end, required_hours)
+		if _is_event_card(planning_card):
+			continue
+
+		total_planned_hours += _get_planned_hours_in_window(window_start, window_end, planning_card)
 
 	employee_capacity = defaultdict(
 		lambda: {
@@ -1092,8 +1263,10 @@ def get_planning_card_detail(name: str, activity_types=None, range_start=None, r
 
 @frappe.whitelist()
 def create_planning_card(
-	project: str | None,
-	start_date: str,
+	card_type: str | None = None,
+	project: str | None = None,
+	event_type: str | None = None,
+	start_date: str | None = None,
 	end_date: str | None = None,
 	operation: str | None = None,
 	elementgruppe: str | None = None,
@@ -1101,32 +1274,45 @@ def create_planning_card(
 	required_hours=None,
 	planned_employee_count=None,
 	hours_per_employee_per_day=None,
+	start_time: str | None = None,
+	end_time: str | None = None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=0,
+	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
 	_require_permission(PLANNING_CARD_DOCTYPE, "create")
+	card_type = (card_type or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
 
 	doc = frappe.get_doc(
 		{
 			"doctype": PLANNING_CARD_DOCTYPE,
+			"card_type": card_type,
 			"project": project or None,
-			"elementgruppe": elementgruppe,
-			"operation": operation or None,
-			"task_type": task_type or _get_operation_task_type(operation),
+			"event_type": (event_type or None) if card_type == EVENT_CARD_TYPE else None,
+			"elementgruppe": elementgruppe if card_type == PRODUCTION_CARD_TYPE else None,
+			"operation": operation or None if card_type == PRODUCTION_CARD_TYPE else None,
+			"task_type": (task_type or _get_operation_task_type(operation)) if card_type == PRODUCTION_CARD_TYPE else None,
 			"start_date": get_datetime_str(get_datetime(start_date)),
-			"end_date": get_datetime_str(get_datetime(end_date)) if end_date else None,
-			"required_hours": flt(required_hours) or _get_operation_required_hours(operation),
-			"planned_employee_count": max(cint(planned_employee_count or 0), 0),
-			"hours_per_employee_per_day": flt(hours_per_employee_per_day)
-			or _get_default_total_daily_hours(planned_employee_count),
-			"adjust_end_date_for_parallel_work": cint(adjust_end_date_for_parallel_work),
+			"start_time": _normalize_optional_time_value(start_time),
+			"end_date": get_datetime_str(get_datetime(end_date)) if end_date else get_datetime_str(get_datetime(start_date)),
+			"end_time": _normalize_optional_time_value(end_time),
+			"required_hours": flt(required_hours) or (_get_operation_required_hours(operation) if card_type == PRODUCTION_CARD_TYPE else 0),
+			"planned_employee_count": max(cint(planned_employee_count or 0), 0) if card_type == PRODUCTION_CARD_TYPE else 0,
+			"hours_per_employee_per_day": (
+				flt(hours_per_employee_per_day) or _get_default_total_daily_hours(planned_employee_count)
+				if card_type == PRODUCTION_CARD_TYPE
+				else 0
+			),
+			"adjust_end_date_for_parallel_work": cint(adjust_end_date_for_parallel_work) if card_type == PRODUCTION_CARD_TYPE else 0,
+			"description": description,
 			"note": note,
 		}
 	)
 	if end_date:
 		doc.flags.manual_end_date = True
-	_apply_assignments(doc, assigned_employees)
+	if card_type == PRODUCTION_CARD_TYPE:
+		_apply_assignments(doc, assigned_employees)
 	doc.insert()
 
 	doc.assigned_employees = [
@@ -1139,13 +1325,16 @@ def create_planning_card(
 		}
 		for row in doc.assigned_employees
 	]
+	_apply_live_task_type_colors([doc])
 	return _serialize_planning_card(doc)
 
 
 @frappe.whitelist()
 def update_planning_card(
 	name: str,
+	card_type: str | None = None,
 	project: str | None = None,
+	event_type: str | None = None,
 	elementgruppe: str | None = None,
 	operation: str | None = None,
 	task_type: str | None = None,
@@ -1154,8 +1343,11 @@ def update_planning_card(
 	required_hours=None,
 	planned_employee_count=None,
 	hours_per_employee_per_day=None,
+	start_time: str | None = None,
+	end_time: str | None = None,
 	assigned_employees=None,
 	adjust_end_date_for_parallel_work=None,
+	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
 	_require_permission(PLANNING_CARD_DOCTYPE, "write")
@@ -1164,33 +1356,46 @@ def update_planning_card(
 	if not doc.has_permission("write"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
+	next_card_type = (card_type or doc.card_type or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
+	doc.card_type = next_card_type
 	if project is not None or "project" in frappe.form_dict:
 		doc.project = project or None
-	if elementgruppe is not None or "elementgruppe" in frappe.form_dict:
+	if next_card_type == EVENT_CARD_TYPE:
+		if event_type is not None or "event_type" in frappe.form_dict:
+			doc.event_type = event_type or None
+	else:
+		doc.event_type = None
+	if (elementgruppe is not None or "elementgruppe" in frappe.form_dict) and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.elementgruppe = elementgruppe or None
-	if operation is not None or "operation" in frappe.form_dict:
+	if (operation is not None or "operation" in frappe.form_dict) and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.operation = operation or None
 		if task_type is None and doc.operation:
 			task_type = _get_operation_task_type(doc.operation)
-	if task_type is not None or "task_type" in frappe.form_dict:
+	if (task_type is not None or "task_type" in frappe.form_dict) and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.task_type = task_type or None
 	if start_date:
 		doc.start_date = get_datetime_str(get_datetime(start_date))
+	if start_time is not None or "start_time" in frappe.form_dict:
+		doc.start_time = _normalize_optional_time_value(start_time)
 	if end_date is not None or "end_date" in frappe.form_dict:
 		doc.end_date = get_datetime_str(get_datetime(end_date)) if end_date else None
 		if end_date:
 			doc.flags.manual_end_date = True
-	if required_hours not in (None, ""):
+	if end_time is not None or "end_time" in frappe.form_dict:
+		doc.end_time = _normalize_optional_time_value(end_time)
+	if required_hours not in (None, "") and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.required_hours = flt(required_hours)
-	if planned_employee_count not in (None, ""):
+	if planned_employee_count not in (None, "") and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.planned_employee_count = max(cint(planned_employee_count), 0)
-	if hours_per_employee_per_day not in (None, ""):
+	if hours_per_employee_per_day not in (None, "") and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.hours_per_employee_per_day = flt(hours_per_employee_per_day)
-	if adjust_end_date_for_parallel_work is not None:
+	if adjust_end_date_for_parallel_work is not None and next_card_type == PRODUCTION_CARD_TYPE:
 		doc.adjust_end_date_for_parallel_work = cint(adjust_end_date_for_parallel_work)
+	if description is not None or "description" in frappe.form_dict:
+		doc.description = description or None
 	if note is not None:
 		doc.note = note
-	if assigned_employees is not None:
+	if assigned_employees is not None and next_card_type == PRODUCTION_CARD_TYPE:
 		_apply_assignments(doc, assigned_employees)
 
 	doc.save()
@@ -1204,6 +1409,7 @@ def update_planning_card(
 		}
 		for row in doc.assigned_employees
 	]
+	_apply_live_task_type_colors([doc])
 	return _serialize_planning_card(doc)
 
 
@@ -1215,7 +1421,23 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 	if not doc.has_permission("write"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
+	original_start = get_datetime(doc.start_date)
+	original_end = get_datetime(doc.end_date) if doc.end_date else original_start
 	doc.start_date = get_datetime_str(get_datetime(start_date))
+	if _is_event_card(doc):
+		if end_date:
+			next_end = get_datetime(end_date)
+			if next_end < get_datetime(doc.start_date):
+				next_end = get_datetime(doc.start_date)
+			doc.end_date = get_datetime_str(next_end)
+		else:
+			day_shift = get_datetime(doc.start_date).date() - original_start.date()
+			doc.end_date = get_datetime_str(original_end + timedelta(days=day_shift.days))
+		doc.save()
+		doc.assigned_employees = []
+		_apply_live_task_type_colors([doc])
+		return _serialize_planning_card(doc)
+
 	if end_date:
 		start_dt = get_datetime(doc.start_date)
 		end_dt = get_datetime(end_date)
@@ -1245,6 +1467,7 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 		}
 		for row in doc.assigned_employees
 	]
+	_apply_live_task_type_colors([doc])
 	return _serialize_planning_card(doc)
 
 

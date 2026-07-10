@@ -8,13 +8,17 @@
  "engine": "InnoDB",
  "field_order": [
   "planning_details_section",
+  "card_type",
   "project",
+  "event_type",
   "elementgruppe",
   "operation",
   "task_type",
   "column_break_1",
   "start_date",
+  "start_time",
   "end_date",
+  "end_time",
   "required_hours",
   "planned_employee_count",
   "hours_per_employee_per_day",
@@ -24,6 +28,7 @@
   "planning_team_section",
   "assigned_employees",
   "note_section",
+  "description",
   "note",
   "column_break_2",
   "color"
@@ -35,12 +40,30 @@
    "label": "Planning Details"
   },
   {
+   "default": "Produktion",
+   "fieldname": "card_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Card Type",
+   "options": "Produktion\nEvent",
+   "reqd": 1
+  },
+  {
    "fieldname": "project",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Project",
    "options": "Project"
+  },
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event Type",
+   "options": "Event Type"
   },
   {
    "fieldname": "elementgruppe",
@@ -76,10 +99,20 @@
    "reqd": 1
   },
   {
+   "fieldname": "start_time",
+   "fieldtype": "Time",
+   "label": "Start Time"
+  },
+  {
    "fieldname": "end_date",
    "fieldtype": "Datetime",
    "in_list_view": 1,
    "label": "End Date"
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Time",
+   "label": "End Time"
   },
   {
    "fieldname": "required_hours",
@@ -144,6 +177,11 @@
    "label": "Additional Information"
   },
   {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
    "fieldname": "note",
    "fieldtype": "Text",
    "label": "Note"
@@ -161,7 +199,7 @@
   }
  ],
  "icon": "fa fa-calendar",
- "modified": "2026-04-22 00:00:00.000000",
+ "modified": "2026-07-10 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Aster Production Planning",
  "name": "Planning Card",
@@ -227,7 +265,7 @@
   }
  ],
  "quick_entry": 1,
- "search_fields": "project,elementgruppe,operation,task_type",
+ "search_fields": "project,event_type,description,elementgruppe,operation,task_type,card_type",
  "show_name_in_global_search": 1,
  "show_title_field_in_link": 1,
  "sort_field": "creation",

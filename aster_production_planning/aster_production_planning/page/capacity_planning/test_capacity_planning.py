@@ -1,16 +1,24 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import cint, get_datetime
 
 from aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning import (
+	_apply_live_task_type_colors,
 	_assignment_hours_in_window,
 	_get_daily_absence_summary,
 	_get_task_type_breakdown,
+	_normalize_optional_time_value,
 	get_overlap_hours,
 )
 
 
 class TestCapacityPlanning(FrappeTestCase):
+	def test_optional_time_value_is_normalized_with_leading_zero(self):
+		self.assertEqual(_normalize_optional_time_value("8:00:00"), "08:00:00")
+		self.assertEqual(_normalize_optional_time_value("8:00"), "08:00:00")
+
 	def test_overlap_hours_for_partial_overlap(self):
 		window_start = get_datetime("2026-04-21 08:00:00")
 		window_end = get_datetime("2026-04-21 12:00:00")
@@ -132,3 +140,49 @@ class TestCapacityPlanning(FrappeTestCase):
 				},
 			],
 		)
+
+	@patch(
+		"aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning.frappe.get_all"
+	)
+	def test_apply_live_task_type_colors_uses_current_task_type_color(self, mock_get_all):
+		mock_get_all.return_value = [frappe._dict({"name": "Assembly", "custom_color": "#112233"})]
+		planning_cards = [
+			frappe._dict({"name": "CARD-001", "task_type": "Assembly", "color": "#abcdef"}),
+			frappe._dict({"name": "CARD-002", "task_type": None, "color": "#fedcba"}),
+		]
+
+		_apply_live_task_type_colors(planning_cards)
+
+		self.assertEqual(planning_cards[0].color, "#112233")
+		self.assertIsNone(planning_cards[1].color)
+
+	@patch(
+		"aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning.get_overlap_hours",
+		return_value=8.0,
+	)
+	@patch(
+		"aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning.frappe.get_all"
+	)
+	def test_task_type_breakdown_reads_live_color_from_task_type(self, mock_get_all, _mock_overlap):
+		mock_get_all.return_value = [frappe._dict({"name": "Assembly", "custom_color": "#445566"})]
+		window_start = get_datetime("2026-04-21 00:00:00")
+		window_end = get_datetime("2026-04-22 23:59:59")
+		planning_cards = [
+			frappe._dict(
+				{
+					"task_type": "Assembly",
+					"start_date": "2026-04-21 08:00:00",
+					"end_date": "2026-04-21 23:59:59",
+					"required_hours": 8,
+					"duration_in_hours": 8,
+					"hours_per_employee_per_day": 8,
+					"assigned_employees": [],
+					"adjust_end_date_for_parallel_work": 0,
+					"color": "#abcdef",
+				}
+			)
+		]
+
+		rows = _get_task_type_breakdown(window_start, window_end, planning_cards)
+
+		self.assertEqual(rows[0]["color"], "#445566")

@@ -13,6 +13,9 @@ from aster_production_planning.aster_production_planning.doctype.planning_settin
 )
 
 OPERATION_DOCTYPE = "Operation"
+EVENT_TYPE_DOCTYPE = "Event Type"
+PRODUCTION_CARD_TYPE = "Produktion"
+EVENT_CARD_TYPE = "Event"
 
 
 def is_weekend(day) -> bool:
@@ -50,11 +53,34 @@ def get_last_planned_day(start_date, planned_days: int, exclude_weekends: bool =
 		current_day += timedelta(days=1)
 
 
+def _parse_optional_time(value):
+	if not value:
+		return None
+
+	if isinstance(value, time):
+		return value
+
+	for fmt in ("%H:%M:%S", "%H:%M"):
+		try:
+			return datetime.strptime(str(value), fmt).time()
+		except ValueError:
+			continue
+
+	return None
+
+
 class PlanningCard(Document):
 	def validate(self):
+		self.set_default_card_type()
+		self.normalize_planning_dates()
+		self.validate_optional_times()
+		if self.is_event_card():
+			self.validate_event_card()
+			return
+
+		self.event_type = None
 		self.set_task_type_from_operation()
 		self.validate_planning_inputs()
-		self.normalize_planning_dates()
 		if getattr(getattr(self, "flags", None), "manual_end_date", False) and self.end_date:
 			self.set_required_hours_from_end_date()
 		else:
@@ -62,6 +88,61 @@ class PlanningCard(Document):
 			self.set_end_date()
 		self.set_assignment_defaults()
 		self.set_allocated_hours()
+
+	def set_default_card_type(self):
+		self.card_type = (self.card_type or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
+
+	def is_event_card(self) -> bool:
+		return (self.card_type or PRODUCTION_CARD_TYPE) == EVENT_CARD_TYPE
+
+	def validate_event_card(self):
+		if not self.start_date:
+			frappe.throw(_("Start Date is required"))
+
+		if not self.end_date:
+			self.end_date = self.start_date
+
+		start_date = get_datetime(self.start_date)
+		end_date = get_datetime(self.end_date)
+		if end_date < start_date:
+			end_date = start_date
+			self.end_date = get_datetime_str(datetime.combine(start_date.date(), time(23, 59, 59)))
+
+		self.event_type = self.event_type or None
+		if self.event_type and not frappe.db.exists(EVENT_TYPE_DOCTYPE, self.event_type):
+			frappe.throw(_("Event Type {0} does not exist").format(self.event_type))
+
+		self.operation = None
+		self.elementgruppe = None
+		self.task_type = None
+		self.required_hours = 0
+		self.duration_in_hours = 0
+		self.planned_employee_count = 0
+		self.hours_per_employee_per_day = 0
+		self.adjust_end_date_for_parallel_work = 0
+		self.allocated_hours = 0
+		self.set("assigned_employees", [])
+
+	def validate_optional_times(self):
+		if not self.start_time and not self.end_time:
+			return
+
+		if self.start_time and not self.start_date:
+			frappe.throw(_("Start Date is required when Start Time is set"))
+
+		if self.end_time and not self.end_date:
+			frappe.throw(_("End Date is required when End Time is set"))
+
+		if not (self.start_time and self.end_time and self.start_date and self.end_date):
+			return
+
+		if getdate(self.start_date) != getdate(self.end_date):
+			return
+
+		start_time = _parse_optional_time(self.start_time)
+		end_time = _parse_optional_time(self.end_time)
+		if start_time and end_time and end_time < start_time:
+			frappe.throw(_("End Time cannot be before Start Time on the same day"))
 
 	def set_required_hours(self):
 		if self.required_hours in (None, "") or flt(self.required_hours) <= 0:

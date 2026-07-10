@@ -2,8 +2,75 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import cint, flt, get_datetime
 
+from aster_production_planning.aster_production_planning.doctype.planning_card.planning_card import (
+	EVENT_CARD_TYPE,
+	PRODUCTION_CARD_TYPE,
+)
+
 
 class TestPlanningCard(FrappeTestCase):
+	def test_card_type_defaults_to_production(self):
+		doc = frappe.new_doc("Planning Card")
+		doc.project = "_Test Project"
+		doc.start_date = "2026-04-16 08:00:00"
+		doc.required_hours = 8
+		doc.hours_per_employee_per_day = 8
+
+		doc.run_method("validate")
+
+		self.assertEqual(doc.card_type, PRODUCTION_CARD_TYPE)
+
+	def test_event_card_keeps_manual_date_range_and_clears_production_fields(self):
+		doc = frappe.new_doc("Planning Card")
+		doc.card_type = EVENT_CARD_TYPE
+		doc.project = "_Test Project"
+		doc.description = "Townhall"
+		doc.start_date = "2026-04-16 08:00:00"
+		doc.end_date = "2026-04-18 12:00:00"
+		doc.operation = "_Test Operation"
+		doc.task_type = "Assembly"
+		doc.required_hours = 16
+		doc.hours_per_employee_per_day = 8
+		doc.planned_employee_count = 2
+		doc.append("assigned_employees", {"employee": "_Test Employee 1"})
+
+		doc.run_method("validate")
+
+		self.assertEqual(get_datetime(doc.start_date).strftime("%Y-%m-%d %H:%M:%S"), "2026-04-16 00:00:00")
+		self.assertEqual(get_datetime(doc.end_date).strftime("%Y-%m-%d %H:%M:%S"), "2026-04-18 23:59:59")
+		self.assertIsNone(doc.operation)
+		self.assertIsNone(doc.task_type)
+		self.assertEqual(flt(doc.required_hours), 0.0)
+		self.assertEqual(flt(doc.hours_per_employee_per_day), 0.0)
+		self.assertEqual(cint(doc.planned_employee_count), 0)
+		self.assertEqual(len(doc.assigned_employees), 0)
+
+	def test_optional_times_are_allowed_on_same_day_when_consistent(self):
+		doc = frappe.new_doc("Planning Card")
+		doc.project = "_Test Project"
+		doc.start_date = "2026-04-16 08:00:00"
+		doc.required_hours = 8
+		doc.hours_per_employee_per_day = 8
+		doc.start_time = "09:00:00"
+		doc.end_time = "11:30:00"
+
+		doc.run_method("validate")
+
+		self.assertEqual(doc.start_time, "09:00:00")
+		self.assertEqual(doc.end_time, "11:30:00")
+
+	def test_end_time_cannot_be_before_start_time_on_same_day(self):
+		doc = frappe.new_doc("Planning Card")
+		doc.project = "_Test Project"
+		doc.start_date = "2026-04-16 08:00:00"
+		doc.end_date = "2026-04-16 18:00:00"
+		doc.required_hours = 8
+		doc.hours_per_employee_per_day = 8
+		doc.start_time = "14:00:00"
+		doc.end_time = "11:00:00"
+
+		self.assertRaises(frappe.ValidationError, doc.run_method, "validate")
+
 	def test_end_date_is_calculated_from_required_hours_and_daily_capacity(self):
 		doc = frappe.new_doc("Planning Card")
 		doc.project = "_Test Project"

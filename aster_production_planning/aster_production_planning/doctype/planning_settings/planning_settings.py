@@ -3,6 +3,8 @@ from frappe.model.document import Document
 from frappe.utils import cint, flt
 
 PLANNING_SETTINGS_DOCTYPE = "Planning Settings"
+DEFAULT_EVENT_CARD_COLOR = "#c35f24"
+DEFAULT_EVENT_CARD_ICON = "calendar"
 
 
 def _unique_values(values) -> list[str]:
@@ -36,6 +38,9 @@ def serialize_planning_settings(doc=None) -> dict:
 			"exclude_weekends_from_planning_duration": 0,
 			"default_hours_per_employee_per_day": 8.0,
 			"default_hours_per_day_without_employees": 8.0,
+			"event_card_color": DEFAULT_EVENT_CARD_COLOR,
+			"event_card_icon": DEFAULT_EVENT_CARD_ICON,
+			"show_leave_type_in_planning_studio": 1,
 		}
 
 	return {
@@ -57,6 +62,9 @@ def serialize_planning_settings(doc=None) -> dict:
 			getattr(doc, "default_hours_per_day_without_employees", 8) or 8,
 			2,
 		),
+		"event_card_color": getattr(doc, "event_card_color", None) or DEFAULT_EVENT_CARD_COLOR,
+		"event_card_icon": getattr(doc, "event_card_icon", None) or DEFAULT_EVENT_CARD_ICON,
+		"show_leave_type_in_planning_studio": cint(getattr(doc, "show_leave_type_in_planning_studio", 1)),
 	}
 
 
@@ -79,6 +87,20 @@ def get_default_hours_per_day_without_employees(doc=None) -> float:
 	if not settings_doc:
 		return 8.0
 	return flt(getattr(settings_doc, "default_hours_per_day_without_employees", 8) or 8, 2)
+
+
+def get_event_card_color(doc=None) -> str:
+	settings_doc = doc or get_planning_settings_doc()
+	if not settings_doc:
+		return DEFAULT_EVENT_CARD_COLOR
+	return getattr(settings_doc, "event_card_color", None) or DEFAULT_EVENT_CARD_COLOR
+
+
+def get_event_card_icon(doc=None) -> str:
+	settings_doc = doc or get_planning_settings_doc()
+	if not settings_doc:
+		return DEFAULT_EVENT_CARD_ICON
+	return getattr(settings_doc, "event_card_icon", None) or DEFAULT_EVENT_CARD_ICON
 
 
 class PlanningSettings(Document):
