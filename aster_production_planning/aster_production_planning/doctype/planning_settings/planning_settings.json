@@ -13,7 +13,9 @@
   "event_planning_card_section",
   "event_card_color",
   "event_card_icon",
+  "show_task_type_icon_in_production_cards",
   "show_leave_type_in_planning_studio",
+  "show_absences_in_planning_card_calendar",
   "capacity_employees_section",
   "capacity_employees",
   "capacity_departments_section",
@@ -73,10 +75,24 @@
   },
   {
    "default": "1",
+   "description": "If enabled, Production Planning Cards show the Task Type icon instead of the Task Type name.",
+   "fieldname": "show_task_type_icon_in_production_cards",
+   "fieldtype": "Check",
+   "label": "Show Task Type Icon on Production Cards"
+  },
+  {
+   "default": "1",
    "description": "If enabled, the Leave column is shown in the Absences table of the Planning Studio.",
    "fieldname": "show_leave_type_in_planning_studio",
    "fieldtype": "Check",
    "label": "Show Leave Type in Planning Studio"
+  },
+  {
+   "default": "1",
+   "description": "If enabled, absences are shown in the Planning Card calendar headers.",
+   "fieldname": "show_absences_in_planning_card_calendar",
+   "fieldtype": "Check",
+   "label": "Show Absences in Planning Card Calendar"
   },
   {
    "fieldname": "capacity_employees_section",

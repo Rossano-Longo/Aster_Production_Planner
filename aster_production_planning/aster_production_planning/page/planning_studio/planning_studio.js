@@ -15,6 +15,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.focus_date = moment();
 		this.horizon_start_date = null;
 		this.horizon_end_date = null;
+		this.calendar_view_mode = "production";
+		this.header_collapsed = this.load_header_collapsed_preference();
 		this.horizon_controls = {};
 		this.suppress_horizon_control_change = false;
 		this.request_id = 0;
@@ -68,7 +70,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			planning_settings: {
 				default_hours_per_employee_per_day: 8,
 				default_hours_per_day_without_employees: 8,
+				show_task_type_icon_in_production_cards: 1,
 				show_leave_type_in_planning_studio: 1,
+				show_absences_in_planning_card_calendar: 1,
 			},
 		};
 		this.overview_state = {
@@ -93,7 +97,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			single_column: true,
 		});
 
-		$(this.page.main).addClass("aster-planning-studio-page");
+		const $main = $(this.page.main);
+		$main.addClass("aster-planning-studio-page");
+		$main.closest(".layout-main-section-wrapper").addClass("aster-planning-studio-section-wrapper");
+		$main.closest(".layout-main").addClass("aster-planning-studio-layout");
+		$main.closest(".page-container").addClass("aster-planning-studio-container");
 	}
 
 	make_filters() {
@@ -129,38 +137,57 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	make_layout() {
 		this.$layout = $(`
 			<div class="aster-studio">
-				<div class="aster-studio__hero">
-					<div class="aster-studio__hero-copy">
-						<h2>${__("Planning Studio")}</h2>
-					</div>
-					<div class="aster-studio__hero-actions">
-						<div class="aster-studio__horizon-controls">
-							<div class="aster-studio__horizon-dates">
-								<div class="aster-studio__horizon-field" data-field="horizon_from"></div>
-								<div class="aster-studio__horizon-field" data-field="horizon_to"></div>
-							</div>
-							<div class="aster-studio__horizon-actions">
-									<div class="aster-studio__mode-switch">
-										<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="two_weeks">${__("2 Weeks")}</button>
-										<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="month">${__("Month")}</button>
-										<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="quarter">${__("Quarter")}</button>
+				<div class="aster-studio__sticky-head">
+					<div class="aster-studio__hero">
+						<div class="aster-studio__hero-copy">
+							<h2>${__("Planning Studio")}</h2>
+							<div class="aster-studio__horizon-controls">
+								<div class="aster-studio__horizon-dates">
+									<div class="aster-studio__horizon-field" data-field="horizon_from"></div>
+									<div class="aster-studio__horizon-field" data-field="horizon_to"></div>
+								</div>
+								<div class="aster-studio__horizon-actions">
+										<div class="aster-studio__mode-switch">
+											<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="two_weeks">${__("2 Weeks")}</button>
+											<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="month">${__("Month")}</button>
+											<button type="button" class="btn btn-default btn-sm aster-studio-mode" data-mode="quarter">${__("Quarter")}</button>
+										</div>
+									<div class="aster-studio__nav">
+										<button
+											type="button"
+											class="btn btn-default btn-sm aster-studio-period-nav aster-studio-period-nav--arrow"
+											data-shift="-1"
+											title="${__("Prev")}"
+											aria-label="${__("Prev")}"
+										>←</button>
+										<button type="button" class="btn btn-default btn-sm aster-studio-period-nav" data-action="today">${__("Today")}</button>
+										<button
+											type="button"
+											class="btn btn-default btn-sm aster-studio-period-nav aster-studio-period-nav--arrow"
+											data-shift="1"
+											title="${__("Next")}"
+											aria-label="${__("Next")}"
+										>→</button>
 									</div>
-								<div class="aster-studio__nav">
-									<button type="button" class="btn btn-default btn-sm aster-studio-period-nav" data-shift="-1">${__("Prev")}</button>
-									<button type="button" class="btn btn-default btn-sm aster-studio-period-nav" data-action="today">${__("Today")}</button>
-									<button type="button" class="btn btn-default btn-sm aster-studio-period-nav" data-shift="1">${__("Next")}</button>
 								</div>
 							</div>
 						</div>
+						<div class="aster-studio__hero-toggle-wrap">
+							<button
+								type="button"
+								class="btn btn-default btn-sm aster-studio__sticky-toggle"
+								aria-expanded="true"
+								title="${__("Collapse header")}"
+								aria-label="${__("Collapse header")}"
+							>${frappe.utils.icon("chevron-up", "sm")}</button>
+						</div>
 					</div>
-				</div>
 
-				<div class="aster-studio__range"></div>
-
-				<div class="aster-studio__metrics">
-					<div class="aster-studio__metric" data-metric="planned_hours"></div>
-					<div class="aster-studio__metric" data-metric="capacity_hours"></div>
-					<div class="aster-studio__metric" data-metric="available_hours"></div>
+					<div class="aster-studio__metrics">
+						<div class="aster-studio__metric" data-metric="planned_hours"></div>
+						<div class="aster-studio__metric" data-metric="capacity_hours"></div>
+						<div class="aster-studio__metric" data-metric="available_hours"></div>
+					</div>
 				</div>
 				<div class="aster-studio__task-type-summary"></div>
 
@@ -168,11 +195,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					<section class="aster-studio__panel aster-studio__overview-panel">
 						<div class="aster-studio__panel-head">
 							<div>
-								<h3>${__("Weekly Rough-Cut View")}</h3>
+								<h3>${__("Yearly Overview")}</h3>
 							</div>
 							<div class="aster-studio__panel-actions">
 								<button type="button" class="btn btn-default btn-sm aster-studio-refresh">${__("Refresh")}</button>
-								<button type="button" class="btn btn-default btn-sm aster-studio-open-list">${__("Planning Cards")}</button>
 							</div>
 						</div>
 						<div class="aster-studio__overview-range"></div>
@@ -183,6 +209,12 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 						<div class="aster-studio__panel-head">
 							<div>
 								<h3>${__("Planning Horizon")}</h3>
+							</div>
+							<div class="aster-studio__panel-actions">
+								<div class="aster-studio__view-switch">
+									<button type="button" class="btn btn-default btn-sm aster-studio-view-mode" data-view-mode="production">${__("Produktionsansicht")}</button>
+									<button type="button" class="btn btn-default btn-sm aster-studio-view-mode" data-view-mode="site">${__("Baustellenansicht")}</button>
+								</div>
 							</div>
 						</div>
 						<div class="aster-studio__calendar-filters"></div>
@@ -221,7 +253,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			</div>
 		`).appendTo(this.page.main);
 
-		this.$range = this.$layout.find(".aster-studio__range");
+		this.$sticky_head = this.$layout.find(".aster-studio__sticky-head");
+		this.$sticky_toggle = this.$layout.find(".aster-studio__sticky-toggle");
 		this.$overview_range = this.$layout.find(".aster-studio__overview-range");
 		this.$overview = this.$layout.find(".aster-studio__overview");
 		this.$calendar_filters = this.$layout.find(".aster-studio__calendar-filters");
@@ -231,6 +264,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.$task_type_summary = this.$layout.find(".aster-studio__task-type-summary");
 		this.$drawer = this.$layout.find(".aster-studio-drawer");
 		this.$drawer_content = this.$layout.find(".aster-studio-drawer__content");
+		this.set_header_collapsed(this.header_collapsed, { persist: false });
 	}
 
 	make_horizon_controls() {
@@ -246,13 +280,77 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				fieldname,
 				fieldtype: "Date",
 				label,
+				options: {
+					dateFormat: "dd.mm.yyyy",
+				},
 			},
 			render_input: true,
 		});
 
 		control.refresh();
+		control.parse = (value) => {
+			if (!value) {
+				return value;
+			}
+
+			const parsed = this.parse_user_date(value);
+			return parsed ? parsed.format("YYYY-MM-DD") : String(value).trim();
+		};
+		control.validate = (value) => {
+			if (!value) {
+				return value;
+			}
+
+			const parsed = this.parse_user_date(value);
+			if (!parsed) {
+				frappe.msgprint(__("Date {0} must be in format: {1}", [value, "dd.mm.yyyy"]));
+				return "";
+			}
+
+			return parsed.format("YYYY-MM-DD");
+		};
+		control.format_for_input = (value) => this.format_horizon_date(value);
 		control.$input?.on("change", () => this.handle_horizon_control_change());
 		return control;
+	}
+
+	get_header_collapsed_storage_key() {
+		return "aster_planning_studio_header_collapsed";
+	}
+
+	load_header_collapsed_preference() {
+		try {
+			return JSON.parse(localStorage.getItem(this.get_header_collapsed_storage_key()) || "false");
+		} catch (error) {
+			return false;
+		}
+	}
+
+	set_header_collapsed(collapsed, { persist = true } = {}) {
+		this.header_collapsed = !!collapsed;
+		this.$sticky_head?.toggleClass("is-collapsed", this.header_collapsed);
+		if (this.header_collapsed) {
+			this.close_filter_picker();
+		}
+
+		const title = this.header_collapsed ? __("Expand header") : __("Collapse header");
+		const icon = this.header_collapsed ? "chevron-down" : "chevron-up";
+		this.$sticky_toggle
+			.attr("title", title)
+			.attr("aria-label", title)
+			.attr("aria-expanded", this.header_collapsed ? "false" : "true")
+			.html(frappe.utils.icon(icon, "sm"));
+
+		if (persist) {
+			localStorage.setItem(
+				this.get_header_collapsed_storage_key(),
+				JSON.stringify(this.header_collapsed)
+			);
+		}
+	}
+
+	toggle_header_collapsed() {
+		this.set_header_collapsed(!this.header_collapsed);
 	}
 
 	render_filter_pickers() {
@@ -537,7 +635,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		this.page.add_menu_item(__("Planning Settings"), () => frappe.set_route("planning-setup"));
 
 		this.$layout.on("click", ".aster-studio-refresh", () => this.refresh());
-		this.$layout.on("click", ".aster-studio-open-list", () => frappe.set_route("List", "Planning Card"));
+		this.$layout.on("click", ".aster-studio__sticky-toggle", () => this.toggle_header_collapsed());
 		this.$layout.on("click", ".aster-filter-picker__trigger", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -644,10 +742,56 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			this.hide_overview_hovercard();
 		});
 
+		this.$layout.on("mouseenter", ".aster-studio-card", (event) => {
+			this.show_card_hovercard(event.currentTarget);
+		});
+
+		this.$layout.on("mouseleave", ".aster-studio-card", () => {
+			this.hide_card_hovercard();
+		});
+
+		this.$layout.on("dragstart", ".aster-studio-card", () => {
+			this.hide_card_hovercard();
+		});
+
+		this.$layout.on("mousedown", ".aster-studio-card", () => {
+			this.hide_card_hovercard();
+		});
+
+		this.$layout.on("scroll", ".aster-studio-horizon", () => {
+			this.hide_card_hovercard();
+		});
+
+		$(document.body)
+			.off("toggleFullWidth.asterPlanningStudio")
+			.on("toggleFullWidth.asterPlanningStudio", () => {
+				requestAnimationFrame(() => {
+					this.render_overview();
+					this.render_horizon();
+				});
+			});
+
+		$(window)
+			.off("resize.asterPlanningStudio")
+			.on(
+				"resize.asterPlanningStudio",
+				frappe.utils.debounce(() => {
+					this.render_overview();
+					this.render_horizon();
+				}, 120)
+			);
+
 		this.$layout.on("click", ".aster-studio-mode", (event) => {
 			const mode = $(event.currentTarget).data("mode");
 			if (mode) {
 				this.apply_horizon_preset(mode);
+			}
+		});
+
+		this.$layout.on("click", ".aster-studio-view-mode", (event) => {
+			const viewMode = $(event.currentTarget).data("viewMode");
+			if (viewMode) {
+				this.set_calendar_view_mode(viewMode);
 			}
 		});
 
@@ -928,16 +1072,12 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	}
 
 	update_labels(horizon_window) {
-		const visible_end = horizon_window.end.clone().subtract(1, "day");
 		const helper_label =
 			this.horizon_mode === "quarter"
 				? __("Quarter helper")
 				: this.horizon_mode === "two_weeks"
 					? __("2-week helper")
 					: __("Month helper");
-		this.$range.text(
-			`${__("Visible horizon")}: ${horizon_window.start.format("DD MMM YYYY")} - ${visible_end.format("DD MMM YYYY")}`
-		);
 		this.$overview_range.text(
 			`${__("Year overview")}: ${this.get_overview_year()} · ${helper_label}: ${
 				this.horizon_mode === "quarter"
@@ -991,6 +1131,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			this.$layout.find(`[data-metric="${metric.key}"]`)
 				.toggleClass("is-danger", metric.state === "danger")
 				.toggleClass("is-good", metric.state === "good")
+				.attr("data-meta", metric.meta || "")
+				.attr("title", metric.meta || "")
 				.html(`
 				<div class="aster-studio__metric-label">${metric.label}</div>
 				<div class="aster-studio__metric-value">${metric.value}</div>
@@ -1043,6 +1185,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	render_overview() {
 		const weeks = this.build_overview_weeks();
 		const monthSegments = this.get_overview_month_segments(weeks);
+		const minVisibleBarHeight = 14;
+		const maxVisualBarHeight = 148;
 		const maxHoursAcrossYear = weeks.reduce((maxValue, week) => {
 			return Math.max(
 				maxValue,
@@ -1094,18 +1238,25 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 								const totalHeightRatio = maxHoursAcrossYear > 0 ? weekMaxHours / maxHoursAcrossYear : 0;
 								const totalBarHeightPx =
 									weekMaxHours > 0
-										? Math.round(18 + totalHeightRatio * 68)
-										: 12;
+										? Math.round(
+											minVisibleBarHeight +
+											totalHeightRatio * (maxVisualBarHeight - minVisibleBarHeight)
+										)
+										: 10;
 								const capacityHeightPx =
 									capacityHours > 0 && maxHoursAcrossYear > 0
-										? Math.round(18 + (capacityHours / maxHoursAcrossYear) * 68)
+										? Math.round(
+											minVisibleBarHeight +
+											(capacityHours / maxHoursAcrossYear) *
+												(maxVisualBarHeight - minVisibleBarHeight)
+										)
 										: 0;
 								const shellHeightPx =
 									capacityHours > 0
 										? capacityHeightPx
 										: plannedHours > 0
 											? totalBarHeightPx
-											: 12;
+											: 10;
 								const plannedFillPercent =
 									plannedHours > 0
 										? Math.max(Math.min(fillRatio * 100, 100), 6)
@@ -1113,7 +1264,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 								const capacityTrackPercent = capacityHours > 0 ? 100 : 0;
 								const hasOverflowSegment = overloaded && capacityHours > 0;
 								const overflowHeightPx = hasOverflowSegment
-									? Math.max(totalBarHeightPx - shellHeightPx, 4)
+									? Math.max(totalBarHeightPx - shellHeightPx, 6)
 									: 0;
 								const tooltipProjects = projectLabels.length
 									? projectLabels
@@ -1226,6 +1377,165 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		$card.removeClass("is-visible").attr("aria-hidden", "true").empty().attr("style", "");
 	}
 
+	show_card_hovercard(target) {
+		if (
+			!target ||
+			this.drag_card_name ||
+			this.card_resize_interaction ||
+			this.assignment_interaction ||
+			this.card_create_interaction
+		) {
+			return;
+		}
+
+		const $target = $(target);
+		const cardData = this.get_card($target.data("name"));
+		const $wrap = this.$horizon.find(".aster-studio-horizon__timeline");
+		const $card = $wrap.find(".aster-studio-card-hovercard");
+		if (!cardData || !$wrap.length || !$card.length) {
+			return;
+		}
+
+		$card
+			.html(this.get_card_hovercard_markup(cardData))
+			.addClass("is-visible")
+			.attr("aria-hidden", "false");
+		this.position_card_hovercard(target);
+	}
+
+	position_card_hovercard(target) {
+		const wrap = this.$horizon.find(".aster-studio-horizon__timeline").get(0);
+		const card = this.$horizon.find(".aster-studio-card-hovercard").get(0);
+		if (!wrap || !card || !target) {
+			return;
+		}
+
+		const wrapRect = wrap.getBoundingClientRect();
+		const targetRect = target.getBoundingClientRect();
+		const cardWidth = card.offsetWidth || 280;
+		const rawCenter = targetRect.left - wrapRect.left + targetRect.width / 2;
+		const left = Math.min(
+			Math.max(rawCenter, cardWidth / 2 + 8),
+			Math.max(wrapRect.width - cardWidth / 2 - 8, cardWidth / 2 + 8)
+		);
+		const top = targetRect.top - wrapRect.top - 14;
+
+		card.style.left = `${left}px`;
+		card.style.top = `${top}px`;
+	}
+
+	hide_card_hovercard() {
+		const $card = this.$horizon.find(".aster-studio-card-hovercard");
+		if (!$card.length) {
+			return;
+		}
+
+		$card.removeClass("is-visible").attr("aria-hidden", "true").empty().attr("style", "");
+	}
+
+	get_card_hovercard_markup(card) {
+		const title = this.get_card_title(card);
+		const subtitle = this.get_card_subtitle(card);
+		const start = this.to_user_moment(card.start_date);
+		const end = this.to_user_moment(card.end_date);
+		const timeLabel = this.get_card_time_label(card);
+		const note = (card?.note || "").trim();
+		const detailRows = [
+			{
+				label: __("Period"),
+				value:
+					start.isValid() && end.isValid()
+						? this.format_date_range(start, end)
+						: [card?.start_date, card?.end_date].filter(Boolean).join(" - "),
+			},
+		];
+
+		if (timeLabel) {
+			detailRows.push({
+				label: __("Time"),
+				value: timeLabel,
+			});
+		}
+
+		if (this.is_event_card(card)) {
+			if (card?.event_type) {
+				detailRows.push({
+					label: __("Event Type"),
+					value: card.event_type,
+				});
+			}
+			if (card?.description) {
+				detailRows.push({
+					label: __("Description"),
+					value: card.description,
+				});
+			}
+		} else {
+			const plannedEmployeeCount = this.get_card_planned_employee_count(
+				card,
+				card.assigned_employee_names || []
+			);
+			if (card?.task_type) {
+				detailRows.push({
+					label: __("Task Type"),
+					value: card.task_type,
+				});
+			}
+			if (card?.operation) {
+				detailRows.push({
+					label: __("Operation"),
+					value: card.operation,
+				});
+			}
+			if (card?.elementgruppe) {
+				detailRows.push({
+					label: __("Elementgruppe"),
+					value: card.elementgruppe,
+				});
+			}
+			if (flt(card?.required_hours || card?.duration_in_hours || 0) > 0) {
+				detailRows.push({
+					label: __("Required Hours"),
+					value: this.format_hours_with_unit(card.required_hours || card.duration_in_hours),
+				});
+			}
+			detailRows.push({
+				label: __("Employees on Card"),
+				value: String(plannedEmployeeCount),
+			});
+		}
+
+		const detailMarkup = detailRows
+			.filter((row) => row.value)
+			.map(
+				(row) =>
+					`<div><strong>${frappe.utils.escape_html(row.label)}:</strong> ${frappe.utils.escape_html(row.value)}</div>`
+			)
+			.join("");
+
+		return `
+			<div class="aster-studio-week-pill__tooltip-title">${frappe.utils.escape_html(title)}</div>
+			${
+				subtitle
+					? `<div class="aster-studio-week-pill__tooltip-range">${frappe.utils.escape_html(subtitle)}</div>`
+					: ""
+			}
+			${detailMarkup ? `<div class="aster-studio-week-pill__tooltip-stats">${detailMarkup}</div>` : ""}
+			${
+				note
+					? `<div class="aster-studio-week-pill__tooltip-projects">
+							<div class="aster-studio-card-hovercard__note-label">${__("Notes")}</div>
+							<div class="aster-studio-card-hovercard__note-text">${this.format_hovercard_text(note)}</div>
+						</div>`
+					: ""
+			}
+		`;
+	}
+
+	format_hovercard_text(value) {
+		return frappe.utils.escape_html(value || "").replace(/\n/g, "<br>");
+	}
+
 	get_week_capacity_bar_markup(week) {
 		const capacity = flt(week.capacity_hours || 0);
 		const planned = flt(week.planned_hours || 0);
@@ -1253,6 +1563,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		const dayColumns = this.get_horizon_day_columns(days, use_full_width);
 		this.horizon_days = days;
 		this.horizon_segments = segments;
+		this.sync_calendar_view_mode_buttons();
 
 		this.$horizon.html(`
 			<div class="aster-studio-horizon aster-studio-horizon--continuous ${use_full_width ? "is-full-width" : ""}">
@@ -1274,6 +1585,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 						</div>
 						<div class="aster-studio-horizon__create-preview" aria-hidden="true"></div>
 					</div>
+					<div class="aster-studio-card-hovercard" aria-hidden="true"></div>
 				</div>
 			</div>
 		`);
@@ -1391,7 +1703,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	build_horizon_days(horizon_window = this.get_horizon_window()) {
 		const capacityByDay = this.get_daily_capacity_map();
-		const absencesByDay = this.get_daily_absence_map();
+		const absencesByDay = this.should_show_absences_in_planning_card_calendar()
+			? this.get_daily_absence_map()
+			: {};
 		const days = [];
 		let cursor = horizon_window.start.clone();
 		while (cursor.isBefore(horizon_window.end, "day")) {
@@ -1542,7 +1856,20 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	}
 
 	get_overview_month_segments(weeks = []) {
-		const monthLabels = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+		const monthLabels = [
+			__("Jan"),
+			__("Feb"),
+			__("Mär"),
+			__("Apr"),
+			__("Mai"),
+			__("Jun"),
+			__("Jul"),
+			__("Aug"),
+			__("Sep"),
+			__("Okt"),
+			__("Nov"),
+			__("Dez"),
+		];
 		const segments = [];
 		let currentSegment = null;
 
@@ -1575,14 +1902,45 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return flt((total_horizon_capacity / total_days) * week_days, 2);
 	}
 
-	build_horizon_card_segments(horizon_window = this.get_horizon_window()) {
-		const sortedCards = [...(this.state.planning_cards || [])]
-			.filter((card) => {
-				const start = this.to_user_moment(card.start_date);
-				const end = this.to_user_moment(card.end_date);
-				return start.isBefore(horizon_window.end) && end.isAfter(horizon_window.start);
-			})
-			.sort((left, right) => {
+	set_calendar_view_mode(viewMode) {
+		const nextMode = viewMode === "site" ? "site" : "production";
+		if (this.calendar_view_mode === nextMode) {
+			return;
+		}
+
+		this.calendar_view_mode = nextMode;
+		this.sync_calendar_view_mode_buttons();
+		this.render_horizon();
+	}
+
+	sync_calendar_view_mode_buttons() {
+		this.$layout.find(".aster-studio-view-mode").each((_, button) => {
+			const $button = $(button);
+			$button.toggleClass("is-active", $button.data("viewMode") === this.calendar_view_mode);
+		});
+	}
+
+	get_calendar_group_key(card) {
+		if (this.calendar_view_mode === "site") {
+			return (card?.project_display || card?.project || __("Ohne Baustelle")).trim();
+		}
+
+		return (card?.operation || card?.task_type || card?.elementgruppe || __("Ohne Arbeitsgang")).trim();
+	}
+
+	get_calendar_group_label(card) {
+		return this.get_calendar_group_key(card);
+	}
+
+	sort_cards_for_calendar_view(cards = []) {
+		return [...cards].sort((left, right) => {
+			const leftGroup = this.get_calendar_group_label(left);
+			const rightGroup = this.get_calendar_group_label(right);
+			const groupCompare = leftGroup.localeCompare(rightGroup, undefined, { sensitivity: "base", numeric: true });
+			if (groupCompare !== 0) {
+				return groupCompare;
+			}
+
 			const leftStart = this.to_user_moment(left.start_date).valueOf();
 			const rightStart = this.to_user_moment(right.start_date).valueOf();
 			if (leftStart !== rightStart) {
@@ -1591,44 +1949,85 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			const leftDuration = this.to_user_moment(left.end_date).diff(this.to_user_moment(left.start_date), "days", true);
 			const rightDuration = this.to_user_moment(right.end_date).diff(this.to_user_moment(right.start_date), "days", true);
-			return rightDuration - leftDuration;
-			});
-		const laneEnds = [];
-		let maxAssignmentRows = 1;
-		const items = sortedCards.map((card) => {
-			const cardStart = this.to_user_moment(card.start_date);
-			const cardEnd = this.to_user_moment(card.end_date);
-			const segmentStart = moment.max(cardStart.clone().startOf("day"), horizon_window.start.clone());
-			const segmentEnd = moment.min(cardEnd.clone().endOf("day"), horizon_window.end.clone().subtract(1, "second"));
-			const startColumn = Math.max(segmentStart.diff(horizon_window.start, "days"), 0) + 1;
-			const endColumn = Math.max(segmentEnd.diff(horizon_window.start, "days"), 0) + 1;
-
-			let laneIndex = 0;
-			while (laneEnds[laneIndex] !== undefined && laneEnds[laneIndex] >= startColumn) {
-				laneIndex += 1;
+			if (leftDuration !== rightDuration) {
+				return rightDuration - leftDuration;
 			}
-			laneEnds[laneIndex] = endColumn;
-			maxAssignmentRows = Math.max(maxAssignmentRows, Math.max((card.assigned_employees || []).length, 1));
 
-			return {
-				card,
-				start_column: startColumn,
-				end_column: Math.max(endColumn, startColumn),
-				lane_index: laneIndex,
-				visible_start: segmentStart.clone().startOf("day"),
-				visible_end: segmentEnd.clone().startOf("day"),
-			};
+			return this.get_card_title(left).localeCompare(this.get_card_title(right), undefined, {
+				sensitivity: "base",
+				numeric: true,
+			});
+		});
+	}
+
+	build_horizon_card_segments(horizon_window = this.get_horizon_window()) {
+		const visibleCards = [...(this.state.planning_cards || [])]
+			.filter((card) => {
+				const start = this.to_user_moment(card.start_date);
+				const end = this.to_user_moment(card.end_date);
+				return start.isBefore(horizon_window.end) && end.isAfter(horizon_window.start);
+			});
+		const sortedCards = this.sort_cards_for_calendar_view(visibleCards);
+		const groups = [];
+		const groupsByKey = new Map();
+		sortedCards.forEach((card) => {
+			const groupKey = this.get_calendar_group_key(card);
+			if (!groupsByKey.has(groupKey)) {
+				groupsByKey.set(groupKey, {
+					key: groupKey,
+					label: this.get_calendar_group_label(card),
+					cards: [],
+				});
+				groups.push(groupsByKey.get(groupKey));
+			}
+			groupsByKey.get(groupKey).cards.push(card);
+		});
+
+		let laneOffset = 0;
+		let maxAssignmentRows = 1;
+		const items = [];
+
+		groups.forEach((group) => {
+			const laneEnds = [];
+			group.cards.forEach((card) => {
+				const cardStart = this.to_user_moment(card.start_date);
+				const cardEnd = this.to_user_moment(card.end_date);
+				const segmentStart = moment.max(cardStart.clone().startOf("day"), horizon_window.start.clone());
+				const segmentEnd = moment.min(cardEnd.clone().endOf("day"), horizon_window.end.clone().subtract(1, "second"));
+				const startColumn = Math.max(segmentStart.diff(horizon_window.start, "days"), 0) + 1;
+				const endColumn = Math.max(segmentEnd.diff(horizon_window.start, "days"), 0) + 1;
+
+				let groupLaneIndex = 0;
+				while (laneEnds[groupLaneIndex] !== undefined && laneEnds[groupLaneIndex] >= startColumn) {
+					groupLaneIndex += 1;
+				}
+				laneEnds[groupLaneIndex] = endColumn;
+				maxAssignmentRows = Math.max(maxAssignmentRows, Math.max((card.assigned_employees || []).length, 1));
+
+				items.push({
+					card,
+					start_column: startColumn,
+					end_column: Math.max(endColumn, startColumn),
+					lane_index: laneOffset + groupLaneIndex,
+					visible_start: segmentStart.clone().startOf("day"),
+					visible_end: segmentEnd.clone().startOf("day"),
+					group_key: group.key,
+					group_label: group.label,
+				});
+			});
+
+			laneOffset += Math.max(laneEnds.length, 1);
 		});
 
 		return {
 			items,
-			lane_count: laneEnds.length,
-			lane_height: 34 + Math.min(maxAssignmentRows, 4) * 18,
+			lane_count: Math.max(laneOffset, 1),
+			lane_height: 24 + Math.min(maxAssignmentRows, 4) * 18,
 		};
 	}
 
 	get_day_header_markup(day) {
-		const weekdayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+		const weekdayLabels = [__("Mo"), __("Di"), __("Mi"), __("Do"), __("Fr"), __("Sa"), __("So")];
 		const weekdayLabel = weekdayLabels[Math.max(day.date.isoWeekday() - 1, 0)] || day.date.format("dd");
 		return `
 			<div class="aster-studio-horizon__day-header ${day.is_weekend ? "is-weekend" : ""} ${day.is_today ? "is-today" : ""} ${day.is_active_week ? "is-active-week" : ""} ${day.has_absence ? "has-absence" : ""}">
@@ -1676,7 +2075,6 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				data-visible-end="${segment.visible_end.format("YYYY-MM-DD")}"
 				draggable="true"
 				style="--card-color:${cardColor}; --card-text-color:${cardTextColor}; --card-column-start:${start_column}; --card-column-end:${end_column + 1}; --card-lane:${lane_index + 1}; --assignment-rows:${Math.max((card.assigned_employees || []).length, 1)};"
-				title="${frappe.utils.escape_html([titleLabel, subtitleLabel].filter(Boolean).join(" · "))}"
 			>
 				<span class="aster-studio-card__resize-handle aster-studio-card__resize-handle--start" title="${__("Adjust duration")}" aria-hidden="true"></span>
 				<span class="aster-studio-card__resize-handle aster-studio-card__resize-handle--end" title="${__("Adjust duration")}" aria-hidden="true"></span>
@@ -1712,6 +2110,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		);
 	}
 
+	should_show_absences_in_planning_card_calendar() {
+		return cint(this.state.planning_settings?.show_absences_in_planning_card_calendar ?? 1) === 1;
+	}
+
 	get_card_markup(card) {
 		return `
 			<div
@@ -1734,6 +2136,14 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return this.get_card_type(card) === "Event";
 	}
 
+	show_task_type_icon_on_production_cards() {
+		return cint(this.state.planning_settings?.show_task_type_icon_in_production_cards ?? 1) === 1;
+	}
+
+	should_render_task_type_icon(card) {
+		return !this.is_event_card(card) && this.show_task_type_icon_on_production_cards() && Boolean(card?.icon);
+	}
+
 	get_card_title(card) {
 		return card?.project_display || card?.project || card?.name || __("Planning Card");
 	}
@@ -1745,7 +2155,14 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				.join(" ");
 		}
 
-		return [card?.operation || card?.task_type || card?.elementgruppe, this.get_card_time_label(card)]
+		const productionDetails = [
+			card?.elementgruppe,
+			this.should_render_task_type_icon(card) ? null : card?.task_type,
+			card?.operation,
+			this.get_card_time_label(card),
+		];
+
+		return productionDetails
 			.filter(Boolean)
 			.join(" · ");
 	}
@@ -1768,6 +2185,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	get_card_icon_markup(card) {
 		if (!card?.icon) {
+			return "";
+		}
+
+		if (!this.is_event_card(card) && !this.should_render_task_type_icon(card)) {
 			return "";
 		}
 
@@ -1880,7 +2301,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	render_card_detail_loading(card) {
 		const projectLabel = card.project_display || card.project;
-		const detailLabel = [this.get_card_subtitle(card), this.get_card_time_label(card)].filter(Boolean).join(" · ");
+		const detailLabel = this.get_card_subtitle(card);
 		this.$drawer_content.html(`
 			<div class="aster-studio-drawer__head">
 				<div>
@@ -1924,7 +2345,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				<div>
 					<div class="aster-studio-drawer__eyebrow">${__("Planning Card")}</div>
 					<h3>${frappe.utils.escape_html(projectLabel || "")}</h3>
-					<p>${frappe.utils.escape_html([this.get_card_subtitle(card), timeLabel].filter(Boolean).join(" · "))}</p>
+					<p>${frappe.utils.escape_html(this.get_card_subtitle(card) || timeLabel || "")}</p>
 				</div>
 				<button type="button" class="aster-studio-drawer__close" aria-label="${__("Close")}">×</button>
 			</div>
@@ -2331,13 +2752,22 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return value.clone();
 		}
 
-		const parsed = moment(String(value).trim(), [frappe.defaultDateFormat, "YYYY-MM-DD", frappe.defaultDatetimeFormat], true);
+		const parsed = moment(
+			String(value).trim(),
+			["DD.MM.YYYY", "D.M.YYYY", frappe.defaultDateFormat, "YYYY-MM-DD", frappe.defaultDatetimeFormat],
+			true
+		);
 		if (parsed.isValid()) {
 			return parsed;
 		}
 
 		const fallback = moment(value);
 		return fallback.isValid() ? fallback : null;
+	}
+
+	format_horizon_date(value) {
+		const parsed = this.parse_user_date(value);
+		return parsed ? parsed.format("DD.MM.YYYY") : "";
 	}
 
 	normalize_time_value(value) {
@@ -2355,6 +2785,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		const minutes = match[2];
 		const seconds = match[3] || "00";
 		return `${hours}:${minutes}:${seconds}`;
+	}
+
+	normalize_link_field_value(value) {
+		const normalized = (value || "").toString().trim();
+		return normalized || "";
 	}
 
 	count_planning_days(startMoment, endMoment) {
@@ -2605,7 +3040,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			"note",
 			"employee_availability_html",
 		];
-		const eventFields = ["event_type", "description"];
+		const eventFields = ["event_type", "start_time", "end_time", "description"];
 
 		productionFields.forEach((fieldname) => dialog.get_field(fieldname)?.$wrapper?.toggle(!eventCard));
 		eventFields.forEach((fieldname) => dialog.get_field(fieldname)?.$wrapper?.toggle(eventCard));
@@ -2862,8 +3297,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				const args = {
 					name: card?.name,
 					card_type: values.card_type || "Produktion",
-					project: values.project,
-					event_type: values.event_type,
+					project: this.normalize_link_field_value(values.project),
+					event_type: this.normalize_link_field_value(values.event_type),
 					start_date: this.to_system_day_start(startDate),
 					start_time: this.normalize_time_value(values.start_time),
 					end_time: this.normalize_time_value(values.end_time),
@@ -2894,9 +3329,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					}
 
 					Object.assign(args, {
-						elementgruppe: values.elementgruppe,
-						operation: values.operation,
-						task_type: values.task_type,
+						elementgruppe: this.normalize_link_field_value(values.elementgruppe),
+						operation: this.normalize_link_field_value(values.operation),
+						task_type: this.normalize_link_field_value(values.task_type),
 						required_hours: requiredHours,
 						planned_employee_count: plannedEmployees,
 						hours_per_employee_per_day: dailyHours,
@@ -3463,14 +3898,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		const fromValue = this.horizon_start_date.format(frappe.defaultDateFormat);
-		const toValue = this.horizon_end_date.format(frappe.defaultDateFormat);
+		const fromValue = this.horizon_start_date.format("YYYY-MM-DD");
+		const toValue = this.horizon_end_date.format("YYYY-MM-DD");
+		const fromDisplayValue = this.format_horizon_date(fromValue);
+		const toDisplayValue = this.format_horizon_date(toValue);
 		this.suppress_horizon_control_change = true;
 		try {
 			this.horizon_controls.from.value = fromValue;
 			this.horizon_controls.to.value = toValue;
-			this.horizon_controls.from.$input?.val(fromValue);
-			this.horizon_controls.to.$input?.val(toValue);
+			this.horizon_controls.from.$input?.val(fromDisplayValue);
+			this.horizon_controls.to.$input?.val(toDisplayValue);
 		} finally {
 			this.suppress_horizon_control_change = false;
 		}
@@ -4032,7 +4469,36 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				color: var(--studio-ink);
 				margin: 0 auto;
 				max-width: 1800px;
+				width: 100%;
 				padding: 10px clamp(16px, 3vw, 40px) 24px;
+			}
+
+			.aster-planning-studio-layout,
+			.aster-planning-studio-section-wrapper,
+			.aster-planning-studio-page {
+				min-width: 0;
+			}
+
+			body.full-width .aster-planning-studio-layout {
+				width: 100%;
+				max-width: none;
+			}
+
+			body.full-width .aster-planning-studio-section-wrapper {
+				flex: 1 0 100%;
+				width: 100%;
+				max-width: none;
+			}
+
+			body.full-width .aster-planning-studio-page {
+				width: 100%;
+				max-width: none;
+			}
+
+			body.full-width .aster-studio {
+				max-width: none;
+				padding-left: clamp(12px, 1.6vw, 24px);
+				padding-right: clamp(12px, 1.6vw, 24px);
 			}
 
 			.aster-studio__hero,
@@ -4044,14 +4510,74 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				gap: 16px;
 			}
 
+			.aster-studio__sticky-head {
+				background: var(--bg-color, #f7f8fa);
+				display: grid;
+				gap: 10px;
+				margin-bottom: 10px;
+				padding: 0 0 10px;
+				position: sticky;
+				top: 0;
+				z-index: 30;
+			}
+
 			.aster-studio__hero {
-				align-items: end;
+				align-items: start;
 				grid-template-columns: minmax(0, 1fr) auto;
-				margin-bottom: 8px;
+				margin-bottom: 0;
+			}
+
+			.aster-studio__hero-copy {
+				display: grid;
+				gap: 10px;
+			}
+
+			.aster-studio__hero-toggle-wrap {
+				display: flex;
+				justify-content: flex-end;
+				padding-top: 4px;
+			}
+
+			.aster-studio__sticky-toggle {
+				align-items: center;
+				background: rgba(255, 255, 255, 0.86);
+				border: 1px solid rgba(36, 49, 60, 0.1);
+				border-radius: 999px;
+				box-shadow: 0 4px 12px rgba(33, 48, 61, 0.08);
+				color: var(--studio-soft);
+				display: inline-flex;
+				height: 34px;
+				justify-content: center;
+				min-width: 34px;
+				padding: 0;
+			}
+
+			.aster-studio__sticky-toggle:hover,
+			.aster-studio__sticky-toggle:focus {
+				background: #fff;
+				color: var(--studio-ink);
+			}
+
+			.aster-studio__sticky-head.is-collapsed {
+				gap: 0;
+				padding-bottom: 6px;
+			}
+
+			.aster-studio__sticky-head.is-collapsed .aster-studio__hero-copy {
+				gap: 0;
+			}
+
+			.aster-studio__sticky-head.is-collapsed .aster-studio__hero-copy h2 {
+				font-size: clamp(22px, 2.2vw, 28px);
+			}
+
+			.aster-studio__sticky-head.is-collapsed .aster-studio__horizon-controls,
+			.aster-studio__sticky-head.is-collapsed .aster-studio__metrics {
+				display: none;
 			}
 
 			.aster-studio__hero-copy h2 {
-				font-size: clamp(38px, 4.2vw, 56px);
+				font-size: clamp(28px, 3vw, 42px);
 				font-weight: 800;
 				letter-spacing: -0.03em;
 				line-height: 0.98;
@@ -4062,6 +4588,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			.aster-studio__hero-actions,
 			.aster-studio__horizon-actions,
 			.aster-studio__mode-switch,
+			.aster-studio__view-switch,
 			.aster-studio__nav,
 			.aster-studio__panel-actions,
 			.aster-studio-card__actions,
@@ -4076,11 +4603,21 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				justify-content: flex-end;
 			}
 
+			.aster-studio-period-nav--arrow {
+				font-size: 15px;
+				font-weight: 700;
+				line-height: 1;
+				min-width: 36px;
+				padding-left: 10px;
+				padding-right: 10px;
+			}
+
 			.aster-studio__horizon-controls {
 				display: grid;
-				gap: 10px;
-				justify-items: end;
-				width: min(100%, 520px);
+				gap: 8px;
+				justify-items: start;
+				margin-top: 0;
+				width: min(100%, 640px);
 			}
 
 			.aster-studio__horizon-dates {
@@ -4104,17 +4641,17 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__horizon-actions {
-				justify-content: flex-end;
+				justify-content: flex-start;
 				width: 100%;
 			}
 
-			.aster-studio__mode-switch .btn.is-active {
+			.aster-studio__mode-switch .btn.is-active,
+			.aster-studio__view-switch .btn.is-active {
 				background: var(--studio-accent);
 				border-color: var(--studio-accent);
 				color: #fff;
 			}
 
-			.aster-studio__range,
 			.aster-studio__overview-range,
 			.aster-studio__horizon-note {
 				color: var(--studio-soft);
@@ -4124,7 +4661,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio__metrics {
 				grid-template-columns: repeat(3, minmax(0, 1fr));
-				margin-bottom: 10px;
+				gap: 12px;
+				margin-bottom: 0;
 			}
 
 			.aster-studio__task-type-summary {
@@ -4201,14 +4739,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__metric {
-				min-height: 132px;
-				overflow: hidden;
-				padding: 18px 20px;
+				cursor: help;
+				min-height: 74px;
+				overflow: visible;
+				padding: 10px 16px;
 				position: relative;
 			}
 
 			.aster-studio__metric::after {
 				background: rgba(157, 18, 255, 0.06);
+				border-radius: inherit;
 				content: "";
 				inset: 0;
 				position: absolute;
@@ -4238,7 +4778,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__metric-label {
-				font-size: 12px;
+				font-size: 11px;
 				font-weight: 700;
 				letter-spacing: 0.06em;
 				position: relative;
@@ -4247,10 +4787,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__metric-value {
-				font-size: 34px;
+				font-size: 24px;
 				font-weight: 700;
 				line-height: 1.08;
-				margin: 10px 0 4px;
+				margin: 5px 0 0;
 				position: relative;
 				z-index: 1;
 			}
@@ -4260,9 +4800,31 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__metric-meta {
-				font-size: 13px;
-				position: relative;
-				z-index: 1;
+				background: rgba(255, 255, 255, 0.98);
+				border: 1px solid rgba(36, 49, 60, 0.08);
+				border-radius: 12px;
+				box-shadow: 0 12px 28px rgba(33, 48, 61, 0.12);
+				font-size: 12px;
+				left: 12px;
+				max-width: min(320px, calc(100vw - 40px));
+				opacity: 0;
+				padding: 8px 10px;
+				pointer-events: none;
+				position: absolute;
+				right: 12px;
+				top: calc(100% + 8px);
+				transform: translateY(-4px);
+				transition: opacity 0.16s ease, transform 0.16s ease;
+				visibility: hidden;
+				white-space: normal;
+				z-index: 12;
+			}
+
+			.aster-studio__metric:hover .aster-studio__metric-meta,
+			.aster-studio__metric:focus-within .aster-studio__metric-meta {
+				opacity: 1;
+				transform: translateY(0);
+				visibility: visible;
 			}
 
 			.aster-studio__panel {
@@ -4453,7 +5015,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				gap: 14px;
 				padding: 12px 18px 10px;
 				position: relative;
-				z-index: 6;
+				z-index: 1;
 			}
 
 			.aster-filter-picker {
@@ -4813,7 +5375,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio-overview-wrap {
 				overflow: visible;
-				padding: 52px 0 6px;
+				padding: 48px 0 10px;
 				position: relative;
 			}
 
@@ -4886,7 +5448,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			.aster-studio-week-pill__chart {
 				align-items: flex-end;
 				display: flex;
-				height: 118px;
+				height: 156px;
 				justify-content: center;
 				padding: 0;
 				width: 100%;
@@ -5019,7 +5581,8 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				display: none;
 			}
 
-			.aster-studio-overview-hovercard {
+			.aster-studio-overview-hovercard,
+			.aster-studio-card-hovercard {
 				background: rgba(255, 255, 255, 0.98);
 				border: 1px solid rgba(36, 49, 60, 0.08);
 				border-radius: 12px;
@@ -5036,12 +5599,14 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				z-index: 20;
 			}
 
-			.aster-studio-overview-hovercard.is-visible {
+			.aster-studio-overview-hovercard.is-visible,
+			.aster-studio-card-hovercard.is-visible {
 				opacity: 1;
 				visibility: visible;
 			}
 
-			.aster-studio-overview-hovercard::after {
+			.aster-studio-overview-hovercard::after,
+			.aster-studio-card-hovercard::after {
 				border-left: 6px solid transparent;
 				border-right: 6px solid transparent;
 				border-top: 7px solid rgba(255, 255, 255, 0.98);
@@ -5100,6 +5665,28 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				color: var(--studio-soft);
 			}
 
+			.aster-studio-card-hovercard {
+				max-width: 320px;
+				min-width: 240px;
+				z-index: 8;
+			}
+
+			.aster-studio-card-hovercard__note-label {
+				color: var(--studio-soft);
+				font-size: 10px;
+				font-weight: 700;
+				letter-spacing: 0.02em;
+				margin-bottom: 4px;
+				text-transform: uppercase;
+			}
+
+			.aster-studio-card-hovercard__note-text {
+				color: #24313c;
+				font-size: 10px;
+				line-height: 1.4;
+				white-space: normal;
+			}
+
 			.aster-studio-horizon {
 				overflow-x: auto;
 				padding: 0 18px 4px;
@@ -5107,6 +5694,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio-horizon__timeline {
 				min-width: max-content;
+				position: relative;
 				width: max-content;
 			}
 
@@ -5268,7 +5856,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 			.aster-studio-horizon__bars {
 				display: grid;
-				gap: 12px 0;
+				gap: 6px 0;
 				grid-template-columns: var(--day-columns, repeat(var(--day-count), minmax(var(--day-width, 64px), var(--day-width, 64px))));
 				grid-template-rows: repeat(var(--lane-count), var(--lane-height, 74px));
 				left: 0;
@@ -5667,7 +6255,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				}
 
 				.aster-studio__hero {
-					grid-template-columns: 1fr;
+					grid-template-columns: minmax(0, 1fr) auto;
 				}
 
 				.aster-studio__hero-actions {
@@ -5688,6 +6276,15 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			@media (max-width: 680px) {
 				.aster-studio__metrics {
 					grid-template-columns: 1fr;
+				}
+
+				.aster-studio__hero {
+					grid-template-columns: 1fr;
+				}
+
+				.aster-studio__hero-toggle-wrap {
+					justify-content: flex-start;
+					padding-top: 0;
 				}
 
 				.aster-studio__task-type-row,

@@ -6,6 +6,7 @@ from frappe.utils import cint, flt
 
 from aster_production_planning.aster_production_planning.doctype.planning_settings.planning_settings import (
 	PLANNING_SETTINGS_DOCTYPE,
+	SHOW_ABSENCES_IN_PLANNING_CARD_CALENDAR_FIELD,
 	get_planning_settings_doc,
 	serialize_planning_settings,
 )
@@ -75,7 +76,9 @@ def save_planning_settings(
 	default_hours_per_day_without_employees=8,
 	event_card_color=None,
 	event_card_icon=None,
+	show_task_type_icon_in_production_cards=1,
 	show_leave_type_in_planning_studio=1,
+	show_absences_in_planning_card_calendar=1,
 ) -> dict:
 	_require_access()
 	doc = _get_settings_doc() or frappe.new_doc(PLANNING_SETTINGS_DOCTYPE)
@@ -85,7 +88,9 @@ def save_planning_settings(
 	doc.default_hours_per_day_without_employees = flt(default_hours_per_day_without_employees or 0, 2)
 	doc.event_card_color = (event_card_color or "").strip() or None
 	doc.event_card_icon = (event_card_icon or "").strip() or None
+	doc.show_task_type_icon_in_production_cards = cint(show_task_type_icon_in_production_cards)
 	doc.show_leave_type_in_planning_studio = cint(show_leave_type_in_planning_studio)
+	doc.show_absences_in_planning_card_calendar = cint(show_absences_in_planning_card_calendar)
 	doc.set("capacity_employees", [{"employee": employee} for employee in _parse_json_list(employees)])
 	doc.set("capacity_departments", [{"department": department} for department in _parse_json_list(departments)])
 	doc.set(
@@ -93,4 +98,10 @@ def save_planning_settings(
 		[{"activity_type": activity_type} for activity_type in _parse_json_list(activity_types)],
 	)
 	doc.save(ignore_permissions=True)
+	frappe.db.set_single_value(
+		PLANNING_SETTINGS_DOCTYPE,
+		SHOW_ABSENCES_IN_PLANNING_CARD_CALENDAR_FIELD,
+		cint(show_absences_in_planning_card_calendar),
+		update_modified=False,
+	)
 	return _serialize_settings(doc)

@@ -357,16 +357,25 @@ def _is_event_card(planning_card) -> bool:
 	return _get_card_type(planning_card) == EVENT_CARD_TYPE
 
 
-def _get_task_type_color_map(task_type_names) -> dict[str, str | None]:
+def _get_task_type_meta_map(task_type_names) -> dict[str, dict[str, str | None]]:
 	task_type_names = _unique_values([(task_type or "").strip() for task_type in task_type_names or [] if task_type])
 	if not task_type_names:
 		return {}
 
+	fields = ["name"]
+	if frappe.db.has_column(TASK_TYPE_DOCTYPE, "custom_color"):
+		fields.append("custom_color")
+	if frappe.db.has_column(TASK_TYPE_DOCTYPE, "custom_icon"):
+		fields.append("custom_icon")
+
 	return {
-		row.name: row.custom_color
+		row.name: {
+			"color": row.get("custom_color"),
+			"icon": row.get("custom_icon"),
+		}
 		for row in frappe.get_all(
 			TASK_TYPE_DOCTYPE,
-			fields=["name", "custom_color"],
+			fields=fields,
 			filters={"name": ["in", task_type_names]},
 			limit_page_length=0,
 		)
@@ -378,7 +387,7 @@ def _apply_live_task_type_colors(planning_cards, task_type_colors: dict[str, str
 		return planning_cards
 
 	if task_type_colors is None:
-		task_type_colors = _get_task_type_color_map(
+		task_type_colors = _get_task_type_meta_map(
 			[getattr(planning_card, "task_type", None) for planning_card in planning_cards]
 		)
 
@@ -400,8 +409,9 @@ def _apply_live_task_type_colors(planning_cards, task_type_colors: dict[str, str
 			continue
 
 		task_type = (getattr(planning_card, "task_type", None) or "").strip()
-		planning_card.color = task_type_colors.get(task_type) if task_type else None
-		planning_card.icon = None
+		task_type_meta = task_type_colors.get(task_type, {}) if task_type else {}
+		planning_card.color = task_type_meta.get("color") if task_type else None
+		planning_card.icon = task_type_meta.get("icon") if task_type else None
 		planning_card.event_type_title = None
 
 	return planning_cards
@@ -980,7 +990,7 @@ def _get_task_type_breakdown(window_start, window_end, planning_cards) -> list[d
 			)
 
 	task_type_names = [item["task_type"] for item in task_type_totals.values() if item["task_type"]]
-	task_type_colors = _get_task_type_color_map(task_type_names)
+	task_type_meta = _get_task_type_meta_map(task_type_names)
 
 	return sorted(
 		[
@@ -988,7 +998,7 @@ def _get_task_type_breakdown(window_start, window_end, planning_cards) -> list[d
 				**item,
 				"planned_hours": flt(item["planned_hours"], 2),
 				"assigned_hours": flt(item["assigned_hours"], 2),
-				"color": task_type_colors.get(item["task_type"]),
+				"color": (task_type_meta.get(item["task_type"]) or {}).get("color"),
 			}
 			for item in task_type_totals.values()
 			if flt(item["planned_hours"]) > 0 or flt(item["assigned_hours"]) > 0

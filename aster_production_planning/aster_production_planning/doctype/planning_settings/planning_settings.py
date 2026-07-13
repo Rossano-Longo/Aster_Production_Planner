@@ -5,6 +5,7 @@ from frappe.utils import cint, flt
 PLANNING_SETTINGS_DOCTYPE = "Planning Settings"
 DEFAULT_EVENT_CARD_COLOR = "#c35f24"
 DEFAULT_EVENT_CARD_ICON = "calendar"
+SHOW_ABSENCES_IN_PLANNING_CARD_CALENDAR_FIELD = "show_absences_in_planning_card_calendar"
 
 
 def _unique_values(values) -> list[str]:
@@ -28,6 +29,27 @@ def get_planning_settings_doc():
 		return None
 
 
+def get_show_absences_in_planning_card_calendar(doc=None) -> int:
+	doc = doc or get_planning_settings_doc()
+	if not frappe.db.exists("DocType", PLANNING_SETTINGS_DOCTYPE):
+		return 1
+
+	value = frappe.db.sql(
+		"""
+		select value
+		from tabSingles
+		where doctype = %s and field = %s
+		limit 1
+		""",
+		(PLANNING_SETTINGS_DOCTYPE, SHOW_ABSENCES_IN_PLANNING_CARD_CALENDAR_FIELD),
+		as_list=True,
+	)
+	if value and value[0]:
+		return cint(value[0][0])
+
+	return cint(getattr(doc, SHOW_ABSENCES_IN_PLANNING_CARD_CALENDAR_FIELD, 1)) if doc else 1
+
+
 def serialize_planning_settings(doc=None) -> dict:
 	doc = doc or get_planning_settings_doc()
 	if not doc:
@@ -40,7 +62,9 @@ def serialize_planning_settings(doc=None) -> dict:
 			"default_hours_per_day_without_employees": 8.0,
 			"event_card_color": DEFAULT_EVENT_CARD_COLOR,
 			"event_card_icon": DEFAULT_EVENT_CARD_ICON,
+			"show_task_type_icon_in_production_cards": 1,
 			"show_leave_type_in_planning_studio": 1,
+			"show_absences_in_planning_card_calendar": 1,
 		}
 
 	return {
@@ -64,7 +88,11 @@ def serialize_planning_settings(doc=None) -> dict:
 		),
 		"event_card_color": getattr(doc, "event_card_color", None) or DEFAULT_EVENT_CARD_COLOR,
 		"event_card_icon": getattr(doc, "event_card_icon", None) or DEFAULT_EVENT_CARD_ICON,
+		"show_task_type_icon_in_production_cards": cint(
+			getattr(doc, "show_task_type_icon_in_production_cards", 1)
+		),
 		"show_leave_type_in_planning_studio": cint(getattr(doc, "show_leave_type_in_planning_studio", 1)),
+		"show_absences_in_planning_card_calendar": get_show_absences_in_planning_card_calendar(doc),
 	}
 
 

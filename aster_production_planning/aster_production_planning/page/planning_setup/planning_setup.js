@@ -1,6 +1,6 @@
 frappe.provide("aster_production_planning.planning_setup");
 
-const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v5";
+const ASTER_PLANNING_SETTINGS_VERSION = "ps-settings-v6";
 
 frappe.pages["planning-setup"].on_page_load = function (wrapper) {
 	wrapper.planning_setup = new aster_production_planning.planning_setup.Page(wrapper);
@@ -56,7 +56,9 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 						<p>${__("Define the default appearance of Event Planning Cards in the Planning Studio and calendar views.")}</p>
 						<div class="aster-settings__field" data-field="event_card_color"></div>
 						<div class="aster-settings__field" data-field="event_card_icon"></div>
+						<div class="aster-settings__field" data-field="show_task_type_icon_in_production_cards"></div>
 						<div class="aster-settings__field" data-field="show_leave_type_in_planning_studio"></div>
+						<div class="aster-settings__field" data-field="show_absences_in_planning_card_calendar"></div>
 					</section>
 					<section class="aster-settings__card">
 						<h3>${__("Employees")}</h3>
@@ -99,9 +101,17 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 			"event_card_icon",
 			__("Event card icon")
 		);
+		this.controls.show_task_type_icon_in_production_cards = this.make_check_control(
+			"show_task_type_icon_in_production_cards",
+			__("Show Task Type icon on Production Cards")
+		);
 		this.controls.show_leave_type_in_planning_studio = this.make_check_control(
 			"show_leave_type_in_planning_studio",
 			__("Show Leave Type in Planning Studio")
+		);
+		this.controls.show_absences_in_planning_card_calendar = this.make_check_control(
+			"show_absences_in_planning_card_calendar",
+			__("Show Absences in Planning Card Calendar")
 		);
 		this.controls.employees = this.make_multiselect_control("employees", __("Employees"), "Employee");
 		this.controls.departments = this.make_multiselect_control("departments", __("Departments"), "Department");
@@ -213,8 +223,14 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				);
 				this.controls.event_card_color.set_value(settings.event_card_color || "#c35f24");
 				this.controls.event_card_icon.set_value(settings.event_card_icon || "calendar");
+				this.controls.show_task_type_icon_in_production_cards.set_value(
+					cint(settings.show_task_type_icon_in_production_cards ?? 1)
+				);
 				this.controls.show_leave_type_in_planning_studio.set_value(
 					cint(settings.show_leave_type_in_planning_studio ?? 1)
+				);
+				this.controls.show_absences_in_planning_card_calendar.set_value(
+					cint(settings.show_absences_in_planning_card_calendar ?? 1)
 				);
 				this.controls.employees.set_value(settings.employees || []);
 				this.controls.departments.set_value(settings.departments || []);
@@ -240,8 +256,14 @@ aster_production_planning.planning_setup.Page = class PlanningSettingsPage {
 				),
 				event_card_color: this.controls.event_card_color.get_value() || "#c35f24",
 				event_card_icon: this.controls.event_card_icon.get_value() || "calendar",
+				show_task_type_icon_in_production_cards: cint(
+					this.controls.show_task_type_icon_in_production_cards.get_value() ?? 1
+				),
 				show_leave_type_in_planning_studio: cint(
 					this.controls.show_leave_type_in_planning_studio.get_value() ?? 1
+				),
+				show_absences_in_planning_card_calendar: cint(
+					this.controls.show_absences_in_planning_card_calendar.get_value() ?? 1
 				),
 				employees: this.normalize_values(this.controls.employees.get_value()),
 				departments: this.normalize_values(this.controls.departments.get_value()),

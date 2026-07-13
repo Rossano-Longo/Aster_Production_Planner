@@ -9,6 +9,7 @@ from aster_production_planning.aster_production_planning.doctype.planning_settin
 	exclude_weekends_from_planning_duration,
 	get_event_card_color,
 	get_event_card_icon,
+	get_show_absences_in_planning_card_calendar,
 )
 from aster_production_planning.aster_production_planning.page.planning_setup.planning_setup import (
 	_parse_json_list,
@@ -78,4 +79,18 @@ class TestPlanningSettings(FrappeTestCase):
 			self.assertEqual(cint(settings.show_leave_type_in_planning_studio or 0), 0)
 		finally:
 			settings.show_leave_type_in_planning_studio = original_value
+			settings.save(ignore_permissions=True)
+
+	def test_show_absences_in_calendar_setting_can_be_disabled(self):
+		settings = frappe.get_single("Planning Settings")
+		original_value = cint(settings.show_absences_in_planning_card_calendar or 0)
+
+		try:
+			settings.show_absences_in_planning_card_calendar = 0
+			settings.save(ignore_permissions=True)
+			settings.reload()
+			self.assertEqual(cint(settings.show_absences_in_planning_card_calendar or 0), 0)
+			self.assertEqual(get_show_absences_in_planning_card_calendar(), 0)
+		finally:
+			settings.show_absences_in_planning_card_calendar = original_value
 			settings.save(ignore_permissions=True)
