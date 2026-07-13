@@ -4056,7 +4056,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		return `${format_number(flt(value || 0), null, 1)}%`;
 	}
 
-	format_absence_datetime_parts(value) {
+	is_hourly_absence(item) {
+		return String(item?.allocation_type || item?.allocation_base || "").toLowerCase() === "hourly";
+	}
+
+	format_absence_datetime_parts(value, showTime = true) {
 		if (!value) {
 			return { day: "–", time: "" };
 		}
@@ -4080,16 +4084,16 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return { day: rawValue, time: "" };
 		}
 
-		const formattedTime = parsed.format("HH:mm:ss");
 		return {
 			day: parsed.format("DD.MM.YYYY"),
-			time: formattedTime === "00:00:00" ? "" : parsed.format("HH:mm"),
+			time: showTime && rawValue.length > 10 ? parsed.format("HH:mm") : "",
 		};
 	}
 
 	get_absence_schedule_markup(item) {
-		const start = this.format_absence_datetime_parts(item.from_date);
-		const end = this.format_absence_datetime_parts(item.to_date);
+		const showTime = this.is_hourly_absence(item);
+		const start = this.format_absence_datetime_parts(item.from_date, showTime);
+		const end = this.format_absence_datetime_parts(item.to_date, showTime);
 		const startLabel = [start.day, start.time].filter(Boolean).join(" ");
 		const endLabel = [end.day, end.time].filter(Boolean).join(" ");
 
@@ -4104,12 +4108,13 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 	}
 
 	format_absence_duration(item) {
-		const hours = flt(item.overlap_days || 0) * 8;
-		if (hours > 8) {
-			return __("{0} days", [flt(item.overlap_days)]);
+		if (this.is_hourly_absence(item)) {
+			return this.format_hours_with_unit(item.leave_hours_without_pause || 0);
 		}
 
-		return this.format_hours_with_unit(hours);
+		const days = flt(item.total_leave_days || item.overlap_days || 0);
+		const formattedDays = Number.isInteger(days) ? String(days) : format_number(days, null, 1);
+		return __("{0} days", [formattedDays]);
 	}
 
 	format_date_range(start, end) {

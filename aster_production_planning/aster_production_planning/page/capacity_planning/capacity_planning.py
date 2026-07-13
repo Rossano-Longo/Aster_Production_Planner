@@ -615,6 +615,14 @@ def _get_absences(window_start, window_end, capacity_filters: dict | None = None
 	capacity_filters = capacity_filters or {}
 	employees = capacity_filters.get("employees")
 	departments = capacity_filters.get("departments")
+	leave_allocation_field = (
+		"lt.allocation_base" if frappe.db.has_column("Leave Type", "allocation_base") else "'Daily'"
+	)
+	leave_hours_without_pause_field = (
+		"la.leave_hours_without_pause"
+		if frappe.db.has_column(LEAVE_APPLICATION_DOCTYPE, "leave_hours_without_pause")
+		else "0"
+	)
 
 	params = {
 		"window_start": str(window_start.date()),
@@ -648,12 +656,16 @@ def _get_absences(window_start, window_end, capacity_filters: dict | None = None
 			coalesce(la.employee_name, la.employee) as employee_name,
 			la.department,
 			la.leave_type,
+			{leave_allocation_field} as allocation_type,
 			la.from_date,
 			la.to_date,
 			la.half_day,
 			la.half_day_date,
-			la.total_leave_days
+			la.total_leave_days,
+			{leave_hours_without_pause_field} as leave_hours_without_pause
 		from `tab{LEAVE_APPLICATION_DOCTYPE}` la
+		left join `tabLeave Type` lt
+			on lt.name = la.leave_type
 		where la.docstatus = 1
 			and la.status = 'Approved'
 			and la.from_date <= %(window_end)s
@@ -677,9 +689,12 @@ def _get_absences(window_start, window_end, capacity_filters: dict | None = None
 				"employee_name": row.employee_name,
 				"department": row.department,
 				"leave_type": row.leave_type,
+				"allocation_type": row.allocation_type or "Daily",
 				"from_date": str(row.from_date),
 				"to_date": str(row.to_date),
 				"overlap_days": overlap_days,
+				"total_leave_days": flt(row.total_leave_days),
+				"leave_hours_without_pause": flt(row.leave_hours_without_pause),
 				"half_day": cint(row.half_day),
 				"half_day_date": str(row.half_day_date) if row.half_day_date else None,
 			}
