@@ -110,9 +110,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					label: __("Projects"),
 					placeholder: __("All projects"),
 					get_data: (txt) =>
-						frappe.db.get_link_options("Project", txt, {
-							status: "Open",
-						}),
+						frappe.xcall(
+							"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.search_project_filter_options",
+							{ txt }
+						),
 				},
 			task_types: {
 				label: __("Task Types"),
@@ -179,7 +180,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 								aria-expanded="true"
 								title="${__("Collapse header")}"
 								aria-label="${__("Collapse header")}"
-							>${frappe.utils.icon("chevron-up", "sm")}</button>
+							>${frappe.utils.icon("small-up", "sm")}</button>
 						</div>
 					</div>
 
@@ -334,7 +335,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 		}
 
 		const title = this.header_collapsed ? __("Expand header") : __("Collapse header");
-		const icon = this.header_collapsed ? "chevron-down" : "chevron-up";
+		const icon = this.header_collapsed ? "small-down" : "small-up";
 		this.$sticky_toggle
 			.attr("title", title)
 			.attr("aria-label", title)
@@ -4474,6 +4475,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				color: var(--studio-ink);
 				margin: 0 auto;
 				max-width: 1800px;
+				min-width: 0;
 				width: 100%;
 				padding: 10px clamp(16px, 3vw, 40px) 24px;
 			}
@@ -4513,6 +4515,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			.aster-studio__support {
 				display: grid;
 				gap: 16px;
+				min-width: 0;
 			}
 
 			.aster-studio__sticky-head {
@@ -4741,6 +4744,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				border: 1px solid var(--studio-line);
 				border-radius: 24px;
 				box-shadow: var(--studio-shadow);
+				min-width: 0;
 			}
 
 			.aster-studio__metric {
@@ -5003,13 +5007,21 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio__horizon-panel {
+				max-width: 100%;
 				padding-left: 0;
 				padding-right: 0;
-				overflow: hidden;
+				overflow: visible;
+				width: 100%;
 			}
 
 			.aster-studio__horizon-panel .aster-studio__panel-head {
 				padding: 0 18px;
+			}
+
+			.aster-studio__horizon {
+				max-width: 100%;
+				min-width: 0;
+				width: 100%;
 			}
 
 			.aster-studio__calendar-filters {
@@ -5020,13 +5032,17 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				gap: 14px;
 				padding: 12px 18px 10px;
 				position: relative;
-				z-index: 1;
+				z-index: 50;
 			}
 
 			.aster-filter-picker {
 				flex: 0 1 280px;
 				min-width: 240px;
 				position: relative;
+			}
+
+			.aster-filter-picker.is-open {
+				z-index: 60;
 			}
 
 			.aster-filter-picker__label {
@@ -5693,8 +5709,12 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			}
 
 			.aster-studio-horizon {
+				box-sizing: border-box;
+				max-width: 100%;
+				min-width: 0;
 				overflow-x: auto;
 				padding: 0 18px 4px;
+				width: 100%;
 			}
 
 			.aster-studio-horizon__timeline {

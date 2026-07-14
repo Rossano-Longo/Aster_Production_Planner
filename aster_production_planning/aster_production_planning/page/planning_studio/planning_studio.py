@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 
 from aster_production_planning.aster_production_planning.page.capacity_planning.capacity_planning import (
 	create_planning_card as _create_planning_card,
@@ -8,6 +9,67 @@ from aster_production_planning.aster_production_planning.page.capacity_planning.
 	update_planning_card as _update_planning_card,
 	update_planning_card_schedule as _update_planning_card_schedule,
 )
+
+
+def _escape_like(value: str) -> str:
+	return str(value).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@frappe.whitelist()
+def search_project_filter_options(txt: str = "", limit: int = 20) -> list[dict]:
+	if not frappe.has_permission("Project", "read"):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	txt = (txt or "").strip()
+	limit = min(max(int(limit or 20), 1), 50)
+	params = {
+		"status": "Open",
+		"limit": limit,
+	}
+	search_condition = ""
+	order_by = "coalesce(project_name, name), name"
+
+	if txt:
+		params["search"] = f"%{_escape_like(txt)}%"
+		params["prefix"] = f"{_escape_like(txt)}%"
+		search_condition = """
+			and (
+				name like %(search)s escape '\\\\'
+				or project_name like %(search)s escape '\\\\'
+			)
+		"""
+		order_by = """
+			case
+				when name like %(prefix)s escape '\\\\' then 0
+				when project_name like %(prefix)s escape '\\\\' then 1
+				else 2
+			end,
+			coalesce(project_name, name),
+			name
+		"""
+
+	rows = frappe.db.sql(
+		f"""
+		select
+			name,
+			project_name
+		from `tabProject`
+		where status = %(status)s
+			{search_condition}
+		order by {order_by}
+		limit %(limit)s
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return [
+		{
+			"value": row.name,
+			"label": f"{row.project_name} ({row.name})" if row.project_name and row.project_name != row.name else row.name,
+		}
+		for row in rows
+	]
 
 
 @frappe.whitelist()
