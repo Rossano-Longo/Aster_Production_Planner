@@ -17,9 +17,6 @@ def _escape_like(value: str) -> str:
 
 @frappe.whitelist()
 def search_project_filter_options(txt: str = "", limit: int = 20) -> list[dict]:
-	if not frappe.has_permission("Project", "read"):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
 	txt = (txt or "").strip()
 	limit = min(max(int(limit or 20), 1), 50)
 	params = {
@@ -70,6 +67,87 @@ def search_project_filter_options(txt: str = "", limit: int = 20) -> list[dict]:
 		}
 		for row in rows
 	]
+
+
+PLANNING_STUDIO_LINK_OPTIONS = {
+	"Project": {
+		"fields": ["name", "project_name"],
+		"label_field": "project_name",
+		"filters": {"status": "Open"},
+		"search_fields": ["name", "project_name"],
+	},
+	"Task Type": {
+		"fields": ["name"],
+		"filters": {"custom_use_for_production_planning": 1},
+		"search_fields": ["name"],
+	},
+	"Operation": {
+		"fields": ["name"],
+		"search_fields": ["name"],
+	},
+	"Event Type": {
+		"fields": ["name", "title"],
+		"label_field": "title",
+		"search_fields": ["name", "title"],
+	},
+	"Employee": {
+		"fields": ["name", "employee_name"],
+		"label_field": "employee_name",
+		"search_fields": ["name", "employee_name"],
+	},
+}
+
+
+@frappe.whitelist()
+def search_planning_studio_link_options(doctype: str, txt: str = "", limit: int = 20) -> list[dict]:
+	config = PLANNING_STUDIO_LINK_OPTIONS.get(doctype)
+	if not config:
+		frappe.throw(_("Unsupported link doctype"), frappe.ValidationError)
+
+	try:
+		limit = min(max(int(limit or 20), 1), 50)
+	except (TypeError, ValueError):
+		limit = 20
+
+	txt = (txt or "").strip()
+	filters = dict(config.get("filters") or {})
+	if txt:
+		or_filters = {
+			fieldname: ["like", f"%{txt}%"] for fieldname in config["search_fields"]
+		}
+	else:
+		or_filters = None
+
+	rows = frappe.get_all(
+		doctype,
+		fields=config["fields"],
+		filters=filters,
+		or_filters=or_filters,
+		order_by="name asc",
+		limit_page_length=limit,
+	)
+	label_field = config.get("label_field")
+
+	return [
+		{
+			"value": row.name,
+			"label": row.get(label_field) or row.name if label_field else row.name,
+		}
+		for row in rows
+	]
+
+
+@frappe.whitelist()
+def get_operation_defaults(operation: str) -> dict:
+	if not operation:
+		return {}
+
+	return frappe.db.get_value(
+		"Operation",
+		operation,
+		["total_operation_time", "custom_task_type"],
+		as_dict=True,
+	) or {}
 
 
 @frappe.whitelist()

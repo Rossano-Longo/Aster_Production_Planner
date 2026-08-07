@@ -123,26 +123,36 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			task_types: {
 				label: __("Task Types"),
 				placeholder: __("All task types"),
-				get_data: (txt) =>
-					frappe.db.get_link_options(
-						"Task Type",
-						txt,
-						this.get_production_planning_task_type_query().filters || {}
-					),
+				get_data: (txt) => this.get_planning_studio_link_options("Task Type", txt),
 			},
 			operations: {
 				label: __("Operations"),
 				placeholder: __("All operations"),
-				get_data: (txt) => frappe.db.get_link_options("Operation", txt),
+				get_data: (txt) => this.get_planning_studio_link_options("Operation", txt),
 			},
 			event_types: {
 				label: __("Event Type"),
 				placeholder: __("All event types"),
-				get_data: (txt) => frappe.db.get_link_options("Event Type", txt),
+				get_data: (txt) => this.get_planning_studio_link_options("Event Type", txt),
 			},
 		};
 
 		this.render_filter_pickers();
+	}
+
+	get_planning_studio_link_options(doctype, txt = "") {
+		return frappe.xcall(
+			"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.search_planning_studio_link_options",
+			{ doctype, txt }
+		);
+	}
+
+	get_planning_studio_link_query(doctype) {
+		return () => ({
+			query:
+				"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.search_planning_studio_link_options",
+			params: { doctype },
+		});
 	}
 
 	make_layout() {
@@ -3108,21 +3118,22 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				},
 				{
 					fieldname: "project",
-					fieldtype: "Link",
+					fieldtype: "Autocomplete",
 					label: __("Project"),
-					options: "Project",
 					default: card?.project,
-					get_query: () => this.get_open_project_query(),
+					get_query: this.get_planning_studio_link_query("Project"),
+					ignore_validation: 1,
 				},
 				{
 					fieldtype: "Column Break",
 				},
 				{
 					fieldname: "event_type",
-					fieldtype: "Link",
+					fieldtype: "Autocomplete",
 					label: __("Event Type"),
-					options: "Event Type",
 					default: card?.event_type,
+					get_query: this.get_planning_studio_link_query("Event Type"),
+					ignore_validation: 1,
 				},
 				{
 					fieldtype: "Section Break",
@@ -3135,11 +3146,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				},
 				{
 					fieldname: "task_type",
-					fieldtype: "Link",
+					fieldtype: "Autocomplete",
 					label: __("Task Type"),
-					options: "Task Type",
 					default: card?.task_type,
-					get_query: () => this.get_production_planning_task_type_query(),
+					get_query: this.get_planning_studio_link_query("Task Type"),
+					ignore_validation: 1,
 					onchange: () => {
 						dialog.__task_type_touched = true;
 					},
@@ -3149,10 +3160,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				},
 				{
 					fieldname: "operation",
-					fieldtype: "Link",
+					fieldtype: "Autocomplete",
 					label: __("Operation"),
-					options: "Operation",
 					default: card?.operation,
+					get_query: this.get_planning_studio_link_query("Operation"),
+					ignore_validation: 1,
 					onchange: () => {
 						this.load_operation_defaults(dialog);
 					},
@@ -3264,9 +3276,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					fieldtype: "MultiSelectList",
 					label: __("Assigned Employees"),
 					default: assignedEmployees,
-					get_data(txt) {
-						return frappe.db.get_link_options("Employee", txt);
-					},
+					get_data: (txt) => this.get_planning_studio_link_options("Employee", txt),
 				},
 				{
 					fieldname: "description",
@@ -3439,8 +3449,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		frappe.db.get_value("Operation", operation, ["total_operation_time", "custom_task_type"], (response) => {
-			const message = response?.message || response || {};
+		frappe.xcall(
+			"aster_production_planning.aster_production_planning.page.planning_studio.planning_studio.get_operation_defaults",
+			{ operation }
+		).then((message) => {
 			if (!dialog.__task_type_touched) {
 				this.apply_production_planning_task_type(dialog, message.custom_task_type || "");
 			}
@@ -3483,11 +3495,9 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			return;
 		}
 
-		frappe.db
-			.get_value("Task Type", task_type, "custom_use_for_production_planning")
-			.then((response) => {
-				const message = response?.message || response || {};
-				target.set_value("task_type", cint(message.custom_use_for_production_planning || message || 0) ? task_type : "");
+		this.get_planning_studio_link_options("Task Type", task_type)
+			.then((options) => {
+				target.set_value(options?.some((option) => option.value === task_type) ? task_type : "");
 			})
 			.catch(() => {
 				target.set_value("task_type", "");

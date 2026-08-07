@@ -55,11 +55,6 @@ PLANNING_CARD_FIELDS = [
 ]
 
 
-def _require_permission(doctype: str, ptype: str = "read") -> None:
-	if not frappe.has_permission(doctype=doctype, ptype=ptype):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-
 def _parse_json_list(value) -> list:
 	if not value:
 		return []
@@ -458,7 +453,7 @@ def _get_planning_cards(
 	if event_types:
 		card_filters.append([PLANNING_CARD_DOCTYPE, "event_type", "in", event_types])
 
-	planning_cards = frappe.get_list(
+	planning_cards = frappe.get_all(
 		PLANNING_CARD_DOCTYPE,
 		fields=[
 			"name",
@@ -907,7 +902,7 @@ def _planning_card_is_accessible(name: str) -> bool:
 		return False
 
 	return bool(
-		frappe.get_list(
+		frappe.get_all(
 			PLANNING_CARD_DOCTYPE,
 			filters={"name": name},
 			pluck="name",
@@ -1041,11 +1036,6 @@ def get_planning_dashboard_data(
 	operations=None,
 	event_types=None,
 ) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "read")
-	_require_permission(TIMESHEET_DOCTYPE, "read")
-	if frappe.db.exists("DocType", LEAVE_APPLICATION_DOCTYPE):
-		_require_permission(LEAVE_APPLICATION_DOCTYPE, "read")
-
 	window_start, window_end = _get_window(start_date, end_date)
 	selected_activity_types = _parse_activity_types(activity_types)
 	selected_projects = _parse_link_filter_values(projects)
@@ -1168,11 +1158,8 @@ def get_planning_dashboard_data(
 
 @frappe.whitelist()
 def get_planning_card_detail(name: str, activity_types=None, range_start=None, range_end=None) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "read")
-	_require_permission(TIMESHEET_DOCTYPE, "read")
-
 	if not _planning_card_is_accessible(name):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
+		frappe.throw(_("Planning Card {0} not found").format(name), frappe.DoesNotExistError)
 
 	doc = _get_planning_card_with_assignments(name)
 
@@ -1319,7 +1306,6 @@ def create_planning_card(
 	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "create")
 	card_type = (card_type or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
 
 	doc = frappe.get_doc(
@@ -1351,7 +1337,7 @@ def create_planning_card(
 		doc.flags.manual_end_date = True
 	if card_type == PRODUCTION_CARD_TYPE:
 		_apply_assignments(doc, assigned_employees)
-	doc.insert()
+	doc.insert(ignore_permissions=True)
 
 	doc.assigned_employees = [
 		{
@@ -1388,11 +1374,7 @@ def update_planning_card(
 	description: str | None = None,
 	note: str | None = None,
 ) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "write")
-
 	doc = frappe.get_doc(PLANNING_CARD_DOCTYPE, name)
-	if not doc.has_permission("write"):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	next_card_type = (card_type or doc.card_type or PRODUCTION_CARD_TYPE).strip() or PRODUCTION_CARD_TYPE
 	doc.card_type = next_card_type
@@ -1436,7 +1418,7 @@ def update_planning_card(
 	if assigned_employees is not None and next_card_type == PRODUCTION_CARD_TYPE:
 		_apply_assignments(doc, assigned_employees)
 
-	doc.save()
+	doc.save(ignore_permissions=True)
 	doc.assigned_employees = [
 		{
 			"employee": row.employee,
@@ -1453,11 +1435,7 @@ def update_planning_card(
 
 @frappe.whitelist()
 def update_planning_card_schedule(name: str, start_date: str, end_date: str | None = None) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "write")
-
 	doc = frappe.get_doc(PLANNING_CARD_DOCTYPE, name)
-	if not doc.has_permission("write"):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	original_start = get_datetime(doc.start_date)
 	original_end = get_datetime(doc.end_date) if doc.end_date else original_start
@@ -1471,7 +1449,7 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 		else:
 			day_shift = get_datetime(doc.start_date).date() - original_start.date()
 			doc.end_date = get_datetime_str(original_end + timedelta(days=day_shift.days))
-		doc.save()
+		doc.save(ignore_permissions=True)
 		doc.assigned_employees = []
 		_apply_live_task_type_colors([doc])
 		return _serialize_planning_card(doc)
@@ -1493,7 +1471,7 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 
 		doc.required_hours = flt(max(planned_days, 1) * effective_daily_hours, 2)
 		doc.duration_in_hours = doc.required_hours
-	doc.save()
+	doc.save(ignore_permissions=True)
 
 	doc.assigned_employees = [
 		{
@@ -1511,11 +1489,7 @@ def update_planning_card_schedule(name: str, start_date: str, end_date: str | No
 
 @frappe.whitelist()
 def delete_planning_card(name: str) -> dict:
-	_require_permission(PLANNING_CARD_DOCTYPE, "delete")
-
 	doc = frappe.get_doc(PLANNING_CARD_DOCTYPE, name)
-	if not doc.has_permission("delete"):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	frappe.delete_doc(PLANNING_CARD_DOCTYPE, name)
+	frappe.delete_doc(PLANNING_CARD_DOCTYPE, name, ignore_permissions=True)
 	return {"name": name, "deleted": True}
