@@ -39,26 +39,31 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 			projects: "",
 			task_types: "",
 			operations: "",
+			event_types: "",
 		};
 		this.filter_options = {
 			projects: [],
 			task_types: [],
 			operations: [],
+			event_types: [],
 		};
 		this.filter_values = {
 			projects: [],
 			task_types: [],
 			operations: [],
+			event_types: [],
 		};
 		this.filter_drafts = {
 			projects: [],
 			task_types: [],
 			operations: [],
+			event_types: [],
 		};
 		this.filter_label_cache = {
 			projects: {},
 			task_types: {},
 			operations: {},
+			event_types: {},
 		};
 		this.state = {
 			planning_cards: [],
@@ -129,6 +134,11 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				label: __("Operations"),
 				placeholder: __("All operations"),
 				get_data: (txt) => frappe.db.get_link_options("Operation", txt),
+			},
+			event_types: {
+				label: __("Event Type"),
+				placeholder: __("All event types"),
+				get_data: (txt) => frappe.db.get_link_options("Event Type", txt),
 			},
 		};
 
@@ -1018,6 +1028,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 					projects: this.get_selected_projects(),
 					task_types: this.get_selected_task_types(),
 					operations: this.get_selected_operations(),
+					event_types: this.get_selected_event_types(),
 				},
 			callback: (response) => {
 				if (request_id !== this.request_id) {
@@ -1055,6 +1066,7 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 				projects: this.get_selected_projects(),
 				task_types: this.get_selected_task_types(),
 				operations: this.get_selected_operations(),
+				event_types: this.get_selected_event_types(),
 			},
 			callback: (response) => {
 				if (overview_request_id !== this.overview_request_id) {
@@ -3825,6 +3837,10 @@ aster_production_planning.planning_studio.PlanningStudio = class PlanningStudio 
 
 	get_selected_operations() {
 		return [...this.get_filter_values("operations")];
+	}
+
+	get_selected_event_types() {
+		return [...this.get_filter_values("event_types")];
 	}
 
 	get_focus_window() {

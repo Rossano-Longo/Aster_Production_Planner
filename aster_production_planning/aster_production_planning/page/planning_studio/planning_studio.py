@@ -80,6 +80,7 @@ def get_planning_dashboard_data(
 	projects=None,
 	task_types=None,
 	operations=None,
+	event_types=None,
 ) -> dict:
 	return _get_planning_dashboard_data(
 		start_date,
@@ -88,6 +89,7 @@ def get_planning_dashboard_data(
 		projects,
 		task_types,
 		operations,
+		event_types,
 	)
 
 

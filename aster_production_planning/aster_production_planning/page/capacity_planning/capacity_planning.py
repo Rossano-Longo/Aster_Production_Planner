@@ -437,7 +437,14 @@ def _get_event_type_meta_map(event_type_names: list[str] | None) -> dict[str, di
 	}
 
 
-def _get_planning_cards(window_start, window_end, projects=None, task_types=None, operations=None) -> list[dict]:
+def _get_planning_cards(
+	window_start,
+	window_end,
+	projects=None,
+	task_types=None,
+	operations=None,
+	event_types=None,
+) -> list[dict]:
 	card_filters = [
 		[PLANNING_CARD_DOCTYPE, "start_date", "<", get_datetime_str(window_end)],
 		[PLANNING_CARD_DOCTYPE, "end_date", ">", get_datetime_str(window_start)],
@@ -448,6 +455,8 @@ def _get_planning_cards(window_start, window_end, projects=None, task_types=None
 		card_filters.append([PLANNING_CARD_DOCTYPE, "task_type", "in", task_types])
 	if operations:
 		card_filters.append([PLANNING_CARD_DOCTYPE, "operation", "in", operations])
+	if event_types:
+		card_filters.append([PLANNING_CARD_DOCTYPE, "event_type", "in", event_types])
 
 	planning_cards = frappe.get_list(
 		PLANNING_CARD_DOCTYPE,
@@ -1030,6 +1039,7 @@ def get_planning_dashboard_data(
 	projects=None,
 	task_types=None,
 	operations=None,
+	event_types=None,
 ) -> dict:
 	_require_permission(PLANNING_CARD_DOCTYPE, "read")
 	_require_permission(TIMESHEET_DOCTYPE, "read")
@@ -1041,6 +1051,7 @@ def get_planning_dashboard_data(
 	selected_projects = _parse_link_filter_values(projects)
 	selected_task_types = _parse_link_filter_values(task_types)
 	selected_operations = _parse_link_filter_values(operations)
+	selected_event_types = _parse_link_filter_values(event_types)
 	settings = _get_capacity_settings()
 	capacity_filters = {
 		"employees": settings["employees"] or None,
@@ -1053,6 +1064,7 @@ def get_planning_dashboard_data(
 		projects=selected_projects,
 		task_types=selected_task_types,
 		operations=selected_operations,
+		event_types=selected_event_types,
 	)
 	capacity_rows = _get_timesheet_capacity(window_start, window_end, capacity_filters)
 	assignment_rows = _get_employee_planning_load(window_start, window_end)
@@ -1147,6 +1159,7 @@ def get_planning_dashboard_data(
 		"selected_projects": selected_projects,
 		"selected_task_types": selected_task_types,
 		"selected_operations": selected_operations,
+		"selected_event_types": selected_event_types,
 		"applied_capacity_filters": capacity_filters,
 		"exclude_weekends_from_planning_duration": cint(exclude_weekends_from_planning_duration()),
 		"planning_settings": serialize_planning_settings(),
